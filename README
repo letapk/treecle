@@ -1,0 +1,99 @@
+Treecle
+-------
+Treecle creates and manages user-defined, custom-built trees.
+
+Whatever that means, it does sounds impressive.
+
+This is version 1.1.1
+
+Seriously, Treecle can be used to create a heirarchy of your own design,
+representing whatever structure exists in the data you want to store. This
+heirarchy can be stored, retrieved, expanded, etc., in any way within the
+limits of the program through the treelike user interface.
+
+Changes in version 1.1.1
+------------------------
+This version fixes some minor bugs, for which many thanks to Tim Scheit, who
+has also provided the German translation for all the user-visible text. This is
+incorporated in a translation file, which is used by the interface if the
+language locale is German.
+The toolbar layout is also modified.
+
+Changes in version 1.1
+----------------------
+1. Added the facility the sort the tree in ascending or descending order
+2. Added a box to the toolbar to search for and find text in the tree.
+
+Availability
+------------
+Treecle is available as source code to compile on your own machine, or as a
+package containing binaries to install and use.
+
+Compiling the source
+--------------------
+
+ALl the source files are available on Github under the following link:
+https://github.com/letapk/treecle
+
+The repository is public. Anyone can check out the branch onto her local machine.
+
+In addition, you will need the libraries and developement files from Qt, which are
+available from the depository of your Linux distribution or from www.qt.io.
+The current source tree compiles and runs using Qt version 5.15.3 under Kubuntu 22.04.
+
+If you are using QtCreator, load the project file treecle.pro which is available in the source
+package. Select the version you want to build (debug version or release version) and hit
+Ctrl-B. If there are no problems, this should build the binary.
+
+The binary may be stored locally in a directoriy separate from the source subdirectory,
+depending on how QtCreator is configured. This location will be available within QtCreator.
+
+If you are not using QtCreator, running the comand:
+qmake treecle.pro
+should create a Makefile for your system. Then, running:
+make
+should create a running binary.
+
+If you are using QtCreator, the location of the locally compiled binary will be
+available from within QtCreator. From this location copy the binary to a place from where
+everyone working on the computer can run it.
+
+In a terminal window give the command:
+sudo cp ./treecle /usr/local/bin/treecle
+Enter the password when prompted.
+
+This copies the binary to /usr/local/bin. if you need the German language translation, then do:
+sudo cp ./treecle_de.qm /usr/local/bin/treecle_de.qm
+
+When executing the program for the first time in any account, a message notifying the creation of
+a hidden subdirectory named ".treecle" will appear. In order to view the online help, the presence
+of the help file (treeclehelp.pdf) in this location is required.
+
+The file COPYING, which displays information about the program and the license is also required to be
+here to enable viewing it from within the utility.
+
+That's it, more or less.
+
+What is the copying policy?
+---------------------------
+While it is copyright, (C) Kartik Patel  the program is also free
+software; you can redistribute it and/or modify it under the terms of the GNU
+General Public License as published by  the Free Software Foundation; either
+version 2 of the License, or (at your option) any later version.  This program
+is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+PARTICULAR PURPOSE.  See the GNU General Public License for more details.  You
+will receive a copy of the GNU General Public License along with this program;
+for more information, write to the Free Software  oundation, Inc., 675 Mass
+Ave, Cambridge, MA 02139, USA.
+
+What else?
+----------
+That covers it, more or less. Email me if there is anything left out, or there are
+problems in compiling, installation or running the utility
+
+Enjoy!
+
+Kartik Patel
+letapk@gmail.com
+https://letapk.wordpress.com
