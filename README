@@ -54,6 +54,8 @@ should create a Makefile for your system. Then, running:
 make
 should create a running binary.
 
+This version compiles with Qt version 5.15.3 and runs under Kubuntu 22.04.
+
 If you are using QtCreator, the location of the locally compiled binary will be
 available from within QtCreator. From this location copy the binary to a place from where
 everyone working on the computer can run it.
