@@ -85,6 +85,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     //HTML editor on right
     leafview = new QWebView ();
     leafview->page()->setContentEditable(true);
+    leafview->page()->settings()->setDefaultTextEncoding("UTF-8");
+
     connect (leafview->page(), SIGNAL(contentsChanged()), this, SLOT(get_data_from_leaf()));
     connect(leafview->pageAction(QWebPage::ToggleBold), SIGNAL(changed()), SLOT(adjustActions()));
 

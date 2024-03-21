@@ -17,7 +17,9 @@ int MainWindow::new_file()
 {
 int i;
 
-    if (tree->topLevelItemCount() > 0) {
+    fmodified = leafview->isModified();
+
+    if (fmodified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
@@ -31,9 +33,9 @@ int i;
             if (i == 1) {//file saved by the user
                 delete_tree();
                 tree->setHeaderLabel("");
-                statustext->setText(tr("Tree saved and discarded"));
+                statustext->setText(tr("Tree saved"));
             }
-            else {//user cancelled the save operation
+            else {//user cancelled the save operation using the cancel button in the file dialog
                 statustext->setText(tr("Tree has not been saved"));
             }
             return 0;
@@ -45,6 +47,13 @@ int i;
             return 0;
         }
     }
+    else {
+        delete_tree();
+        tree->setHeaderLabel("");
+        statustext->setText(tr(""));
+    }
+    fmodified = leafview->isModified();
+
     return 0;
 }
 
@@ -59,13 +68,15 @@ bool ok;
     if (i == 1)//operation cancelled
         return;
 
-    QString fn = QFileDialog::getOpenFileName(this, tr("Open File..."), QString(), tr("Treecle files (*.trc);;All files (*)"));
+    QString fn = QFileDialog::getOpenFileName(this, tr("Open File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
     QFile file (fn);
 
     ok = file.open(QFile::ReadOnly);
     if (ok == false)
         return;
     QTextStream in(&file);
+    in.setCodec("UTF-8");
+
     QFileInfo fi(fn);
 
     in >> catcount;
@@ -87,6 +98,7 @@ bool ok;
     s.append (tr("Read "));
     s.append (fn);
     statustext->setText(s);
+    fmodified = false;
 }
 
 void MainWindow::read_this_branch (QTreeWidgetItem *cat, QTextStream *in)
@@ -138,12 +150,14 @@ QString s;
 int i;
 bool ok;
 
-    if (tree->topLevelItemCount() == 0) {
+    fmodified = leafview->isModified();
+
+    if (tree->topLevelItemCount() == 0 || fmodified == false) {
         statustext->setText(tr("Nothing to save"));
         return 0;
     }
 
-    QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(), tr("Treecle files (*.trc);;All files (*)"));
+    QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
     QFileInfo fi(fn);
     if (fn.isEmpty())
         return 0;
@@ -158,6 +172,8 @@ bool ok;
         return 0;
 
     QTextStream out(&file);
+    out.setCodec("UTF-8");
+
 
     catcount = tree->topLevelItemCount();
     out << catcount << "\n";
@@ -176,7 +192,7 @@ bool ok;
     s.append (tr("Saved "));
     s.append (fn);
     statustext->setText(s);
-
+    fmodified = false;
     return 1;
 }
 

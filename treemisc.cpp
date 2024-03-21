@@ -67,6 +67,7 @@ void MainWindow::setup_menu_and_toolbar ()
 
     QAction *quit = new QAction(tr("E&xit"), this);
     filemenu->addAction(quit);
+    quit->setShortcut(QKeySequence::Quit);
     connect(quit, SIGNAL(triggered()), this, SLOT(quit()));
 
     //tree menu
@@ -187,10 +188,10 @@ void MainWindow::setup_menu_and_toolbar ()
     QActionGroup *grp = new QActionGroup(this);
     connect(grp, SIGNAL(triggered(QAction*)), this, SLOT(textAlign(QAction*)));
 
-    actionAlignLeft = new QAction(QIcon::fromTheme("", QIcon(":/images/textleft.png")),tr("&Left"), grp);
-    actionAlignCenter = new QAction(QIcon::fromTheme("",QIcon(":/images/textcenter.png")),tr("C&enter"), grp);
-    actionAlignRight = new QAction(QIcon::fromTheme("",QIcon(":/images/textright.png")),tr("&Right"), grp);
-    actionAlignJustify = new QAction(QIcon::fromTheme("",QIcon(":/images/textjustify.png")),tr("&Justify"), grp);
+    actionAlignLeft = new QAction(QIcon::fromTheme("", QIcon(":/images/textleft.png")),tr("&Left align text"), grp);
+    actionAlignCenter = new QAction(QIcon::fromTheme("",QIcon(":/images/textcenter.png")),tr("C&entered text"), grp);
+    actionAlignRight = new QAction(QIcon::fromTheme("",QIcon(":/images/textright.png")),tr("&Right align text"), grp);
+    actionAlignJustify = new QAction(QIcon::fromTheme("",QIcon(":/images/textjustify.png")),tr("&Justify text"), grp);
 
     actionAlignLeft->setShortcut(Qt::CTRL + Qt::Key_L);
     actionAlignLeft->setCheckable(true);
@@ -216,19 +217,19 @@ void MainWindow::setup_menu_and_toolbar ()
     QAction *actionTextColor = new QAction(*pix, tr("Text color..."), this);
     connect(actionTextColor, SIGNAL(triggered()), this, SLOT(textColor()));
 
-    comboFont = new QFontComboBox(tb1);
-    QApplication::font().setPointSize(9);
+    comboFont = new QFontComboBox(tb2);
+    //QApplication::font().setPointSize(9);
     comboFont->setCurrentFont(QApplication::font());
     connect(comboFont, SIGNAL(currentFontChanged(QFont)), this, SLOT(fontFamily()));
 
-    comboSize = new QComboBox(tb1);
+    comboSize = new QComboBox(tb2);
     comboSize->setObjectName("comboSize");
     comboSize->setEditable(true);
     QFontDatabase db;
     foreach(int size, db.standardSizes())
         comboSize->addItem(QString::number(size));
     connect(comboSize, SIGNAL(activated(QString)), this, SLOT(textSize()));
-    QApplication::font().setPointSize(6);
+    //QApplication::font().setPointSize(6);
     comboSize->setCurrentIndex(comboSize->findText(QString::number(6)));
 
     srchbox = new QLineEdit (tb1);
@@ -391,7 +392,7 @@ float i;
 
     //this is a kludge to get the fonts a reaonable size on my working monitor
     //it might not be optimal on other monitors
-    i = s.toInt() / 2.0;
+    i = s.toInt();// / 3.0;
 
     QWebFrame *frame = leafview->page()->mainFrame();
     QString js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("fontSize").arg(QString::number(i));
@@ -400,7 +401,10 @@ float i;
 
 void MainWindow::insertImage()
 {
-QString s, filters;
+QString filters;
+QUrl url;
+QString js;
+QWebFrame *frame;
 
     if (tree->topLevelItemCount() == 0) {
         statustext->setText(tr("The tree is empty. Create a branch first."));
@@ -419,10 +423,14 @@ QString s, filters;
     if (!QFile::exists(file))
         return;
 
-    QUrl url = QUrl::fromLocalFile(file);
-        QWebFrame *frame = leafview->page()->mainFrame();
-        QString js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("insertImage").arg(url.toString());
-        frame->evaluateJavaScript(js);
+    url = QUrl::fromLocalFile(file);
+    frame = leafview->page()->mainFrame();
+
+    js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("insertImage").arg(url.toString());
+    frame->evaluateJavaScript(js);
+
+    js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("insertText").arg(url.toString());
+    frame->evaluateJavaScript(js);
 
 }
 
@@ -430,7 +438,9 @@ void MainWindow::closeEvent(QCloseEvent *event)
 {
 int i;
 
-    if (tree->topLevelItemCount() > 0) {
+    //fmodified = leafview->isModified();
+
+    if (fmodified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
@@ -505,14 +515,11 @@ QMessageBox msgBox;
     QFile file(Helpfilename);
     ok = file.exists();
     if (ok == false) {
-        s1 = QObject::tr("The help file was not found\n");
+        s1 = QObject::tr("The help file \"treeclehelp.pdf\"was not found\n");
         s1.append (QObject::tr("Please make sure that it is present in the hidden treecle data directory.\n"));
-        s1.append (Helpfilename);
         s1.append("\n");
         s1.append (Homepath);
         s1.append("\n");
-        s1.append (Lockfilename);
-
 
         msgBox.setText(s1);
         msgBox.exec();

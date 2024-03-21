@@ -1,15 +1,20 @@
-Treecle
--------
+Treecle 1.1.2
+-------------
 Treecle creates and manages user-defined, custom-built trees.
 
 Whatever that means, it does sounds impressive.
-
-This is version 1.1.1
 
 Seriously, Treecle can be used to create a heirarchy of your own design,
 representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
+
+Changes in version 1.1.2
+------------------------
+1. On exit, the program would ask to save the data to file even when it was not
+modified. Fixed.
+2. There were problems in displaying non-English characters. Fixed, hopefully.
+3. Added a shortcut key sequence to quit the program.
 
 Changes in version 1.1.1
 ------------------------
@@ -23,6 +28,7 @@ Changes in version 1.1
 ----------------------
 1. Added the facility the sort the tree in ascending or descending order
 2. Added a box to the toolbar to search for and find text in the tree.
+3. Modified the README and PDF help file.
 
 Availability
 ------------
@@ -31,15 +37,20 @@ package containing binaries to install and use.
 
 Compiling the source
 --------------------
-
 ALl the source files are available on Github under the following link:
 https://github.com/letapk/treecle
 
 The repository is public. Anyone can check out the branch onto her local machine.
 
-In addition, you will need the libraries and developement files from Qt, which are
+You will need the libraries and developement files from Qt, which are
 available from the depository of your Linux distribution or from www.qt.io.
-The current source tree compiles and runs using Qt version 5.15.3 under Kubuntu 22.04.
+
+You will also need the QtWebKit and QtWebKitWidgets package as well, since
+new versions of Qt do not include them anymore.
+These should contain and provide the developement files and libraries compatible with the
+version of Qt on your system.
+
+The current source tree compiles and runs using Qt version 5.15.2 under Kubuntu 22.04.
 
 If you are using QtCreator, load the project file treecle.pro which is available in the source
 package. Select the version you want to build (debug version or release version) and hit
@@ -54,7 +65,7 @@ should create a Makefile for your system. Then, running:
 make
 should create a running binary.
 
-This version compiles with Qt version 5.15.3 and runs under Kubuntu 22.04.
+This version compiles with Qt version 5.15.2 and runs under Kubuntu 22.04.
 
 If you are using QtCreator, the location of the locally compiled binary will be
 available from within QtCreator. From this location copy the binary to a place from where

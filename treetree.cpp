@@ -111,6 +111,8 @@ QTreeWidgetItem *b;
         b->removeChild(cur_leaf);
         statustext->setText(tr("Deleted sub-branch"));
         set_branch(b);
+        fmodified = leafview->isModified();
+
         return;
     }
     else {//category
@@ -137,6 +139,8 @@ QTreeWidgetItem *b;
         leafview->setHtml("<p></p>");
     }
     catflag = 1;
+    fmodified = leafview->isModified();
+
 }
 
 void MainWindow::tree_cutbranch()
@@ -185,6 +189,8 @@ int i;
         leafview->setHtml("<p></p>");
     }
     catflag = 1;
+    fmodified = leafview->isModified();
+
 }
 
 QTreeWidgetItem *copy_branch;
@@ -222,7 +228,7 @@ void MainWindow::tree_pastebranch()
 void MainWindow::set_branch (QTreeWidgetItem *b)
 //item clicked
 {
-QString s;
+//QString s;
 
     if (b->parent() != NULL) {//leaf item
         //leaf and branch are different
@@ -240,7 +246,6 @@ QString s;
     show_branch_data ();
     tree->setCurrentItem(cur_leaf);
     cur_leaf->setSelected(true);
-
 }
 
 void MainWindow::show_branch_data()
@@ -263,6 +268,8 @@ QByteArray d;
     leafview->setContent(d, "text/html");
     leafview->page()->setContentEditable(true);
     leafview->page()->setLinkDelegationPolicy(QWebPage::DelegateAllLinks);
+    fmodified = leafview->isModified();
+
 }
 
 void MainWindow::modify_name (QTreeWidgetItem *b)
@@ -281,7 +288,6 @@ int i;
     }
 
     b->setText(0, s);
-
 }
 
 void MainWindow::get_data_from_leaf()
@@ -292,6 +298,8 @@ QString s;
     if (tree->topLevelItemCount() == 0) {
         statustext->setText(tr("The tree is empty"));
         leafview->setHtml("<p></p>");
+        fmodified = leafview->isModified();
+
         return;
     }
     s.clear();
@@ -305,6 +313,7 @@ QString s;
         cur_leaf->setText(1, s);
         modify_name(cur_leaf);
     }
+    fmodified = leafview->isModified();
 
 }
 

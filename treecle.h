@@ -69,7 +69,7 @@ class MainWindow : public QMainWindow
     //whether current branch is a top level category or a child, no. of categories
     int catflag, catcount;
     //whether the data has been altered
-    int modified;
+    bool fmodified = false;
 
     QLabel *statustext;
 
