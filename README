@@ -60,12 +60,10 @@ The binary may be stored locally in a directoriy separate from the source subdir
 depending on how QtCreator is configured. This location will be available within QtCreator.
 
 If you are not using QtCreator, running the comand:
-qmake treecle.pro
-should create a Makefile for your system. Then, running:
-make
+>qmake treecle.pro
+in a terminal should create a Makefile for your system. Then, running:
+>make
 should create a running binary.
-
-This version compiles with Qt version 5.15.2 and runs under Kubuntu 22.04.
 
 If you are using QtCreator, the location of the locally compiled binary will be
 available from within QtCreator. From this location copy the binary to a place from where
@@ -84,8 +82,6 @@ of the help file (treeclehelp.pdf) in this location is required.
 
 The file COPYING, which displays information about the program and the license is also required to be
 here to enable viewing it from within the utility.
-
-That's it, more or less.
 
 What is the copying policy?
 ---------------------------
