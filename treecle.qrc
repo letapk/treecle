@@ -23,5 +23,6 @@
         <file>images/view-sort-descending.png</file>
         <file>images/go-down-search.png</file>
         <file>images/go-up-search.png</file>
+        <file>images/filesaveas.png</file>
     </qresource>
 </RCC>

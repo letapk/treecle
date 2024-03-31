@@ -16,8 +16,9 @@
 int MainWindow::new_file()
 {
 int i;
+QString s;
 
-    fmodified = leafview->isModified();
+    //fmodified = leafview->isModified();
 
     if (fmodified == true) {
         QMessageBox::StandardButton ret;
@@ -32,8 +33,10 @@ int i;
             i = save_file();
             if (i == 1) {//file saved by the user
                 delete_tree();
-                tree->setHeaderLabel("");
-                statustext->setText(tr("Tree saved"));
+                tree->setHeaderLabel("Filename");
+                s.append (tr("Saved "));
+                s.append (Currentfile);
+                statustext->setText(s);
             }
             else {//user cancelled the save operation using the cancel button in the file dialog
                 statustext->setText(tr("Tree has not been saved"));
@@ -42,17 +45,18 @@ int i;
         }
         if (ret == QMessageBox::Discard) {
             delete_tree();
-            tree->setHeaderLabel("");
+            tree->setHeaderLabel("Filename");
             statustext->setText(tr("Tree discarded"));
+            fmodified = false;
             return 0;
         }
     }
     else {
         delete_tree();
-        tree->setHeaderLabel("");
-        statustext->setText(tr(""));
+        tree->setHeaderLabel("Filename");
+        statustext->setText(tr("New file"));
     }
-    fmodified = leafview->isModified();
+    //fmodified = leafview->isModified();
 
     return 0;
 }
@@ -99,6 +103,7 @@ bool ok;
     s.append (fn);
     statustext->setText(s);
     fmodified = false;
+    Currentfile = fn;
 }
 
 void MainWindow::read_this_branch (QTreeWidgetItem *cat, QTextStream *in)
@@ -157,6 +162,56 @@ bool ok;
         return 0;
     }
 
+    /*
+    QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
+    QFileInfo fi(fn);
+    if (fn.isEmpty())
+        return 0;
+    if (!fn.isEmpty()) {
+        if (fi.suffix().isEmpty())
+            fn.append(".trc");
+    }
+    */
+    QFile file (Currentfile);
+    QFileInfo fi(Currentfile);
+
+    ok = file.open(QFile::WriteOnly);
+    if (ok == false)
+        return 0;
+
+    QTextStream out(&file);
+    out.setCodec("UTF-8");
+
+    catcount = tree->topLevelItemCount();
+    out << catcount << "\n";
+
+    //loop over categories
+    for (i = 0; i < catcount; i++){
+        //next top level category
+        cat = tree->topLevelItem(i);
+        save_this_branch (cat, &out);
+    }
+
+    file.close();
+
+    tree->setHeaderLabel(fi.fileName());
+
+    s.append (tr("Saved "));
+    s.append (Currentfile);
+    statustext->setText(s);
+    fmodified = false;
+    return 1;
+}
+
+int MainWindow::save_file_as()
+{
+QTreeWidgetItem *cat;
+QString s;
+int i;
+bool ok;
+
+    fmodified = leafview->isModified();
+
     QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
     QFileInfo fi(fn);
     if (fn.isEmpty())
@@ -173,7 +228,6 @@ bool ok;
 
     QTextStream out(&file);
     out.setCodec("UTF-8");
-
 
     catcount = tree->topLevelItemCount();
     out << catcount << "\n";
@@ -193,6 +247,7 @@ bool ok;
     s.append (fn);
     statustext->setText(s);
     fmodified = false;
+
     return 1;
 }
 

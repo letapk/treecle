@@ -77,6 +77,7 @@ class MainWindow : public QMainWindow
     QString Helpfilename;
     //stores the path to the data subdirectory
     QString Homepath;
+    QString Currentfile;
 
 
 public:
@@ -90,6 +91,7 @@ public slots:
     void open_file ();
     int new_file();
     int save_file();
+    int save_file_as ();
     void quit();
 
     //help menu

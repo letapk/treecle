@@ -63,6 +63,13 @@ void MainWindow::setup_menu_and_toolbar ()
     savefile->setShortcut(QKeySequence::Save);
     connect(savefile, SIGNAL(triggered()), this, SLOT(save_file()));
 
+    QIcon saveIconas = QIcon::fromTheme("", QIcon(":/images/filesaveas.png"));
+    QAction *savefileas = new QAction(tr("&Save file as..."), this);
+    filemenu->addAction(savefileas);
+    savefileas->setIcon(saveIconas);
+    savefileas->setShortcut(QKeySequence::SaveAs);
+    connect(savefileas, SIGNAL(triggered()), this, SLOT(save_file_as()));
+
     filemenu->addSeparator();
 
     QAction *quit = new QAction(tr("E&xit"), this);
@@ -275,6 +282,7 @@ void MainWindow::setup_menu_and_toolbar ()
     tb2->addAction(newfile);
     tb2->addAction(openfile);
     tb2->addAction(savefile);
+    tb2->addAction(savefileas);
     tb2->addSeparator();
 
     tb2->addAction(actionTextBold);
@@ -377,6 +385,7 @@ QFont f;
     QWebFrame *frame = leafview->page()->mainFrame();
     QString js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("fontName").arg(f.family());
     frame->evaluateJavaScript(js);
+    fmodified = true;
 
 }
 
