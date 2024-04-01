@@ -55,6 +55,8 @@ QString s;
         delete_tree();
         tree->setHeaderLabel("Filename");
         statustext->setText(tr("New file"));
+        Currentfile.clear();
+        Currentfile.append("Noname.trc");
     }
     //fmodified = leafview->isModified();
 
@@ -162,6 +164,9 @@ bool ok;
         return 0;
     }
 
+    if (Currentfile == "Noname.trc") {
+        save_file_as();
+    }
     /*
     QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
     QFileInfo fi(fn);
@@ -247,6 +252,7 @@ bool ok;
     s.append (fn);
     statustext->setText(s);
     fmodified = false;
+    Currentfile = fn;
 
     return 1;
 }

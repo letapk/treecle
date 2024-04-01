@@ -57,7 +57,6 @@ bool ok = false;
     mainwindow.setWindowTitle(QObject::tr("Treecle"));
     mainwindow.show();
 
-
     return app.exec();
 }
 
@@ -113,6 +112,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     //"COPYING" file to read
     Gnugplfilename.append (userpath);
     Gnugplfilename.append ("/COPYING");
+
+    //Currentfile name
+    Currentfile.append("Noname.trc");
 
     //initial window size
     this->resize(990,630);
