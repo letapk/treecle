@@ -46,6 +46,8 @@ QString s;
     textSize();
     fontFamily();
     leafview->findText("");
+
+    fmodified = true;
 }
 
 void MainWindow::tree_addsubbranch()
@@ -84,6 +86,7 @@ QTreeWidgetItem *b;
     textSize();
     fontFamily();
     leafview->findText("");
+    fmodified = true;
 }
 
 void MainWindow::tree_delbranch()
@@ -111,7 +114,7 @@ QTreeWidgetItem *b;
         b->removeChild(cur_leaf);
         statustext->setText(tr("Deleted sub-branch"));
         set_branch(b);
-        fmodified = leafview->isModified();
+        fmodified = true;
 
         return;
     }
@@ -139,7 +142,7 @@ QTreeWidgetItem *b;
         leafview->setHtml("<p></p>");
     }
     catflag = 1;
-    fmodified = leafview->isModified();
+    fmodified = true;
 
 }
 
@@ -152,6 +155,7 @@ void MainWindow::tree_cutbranch()
 
     tree_copybranch();
     tree_delbranch_after_copy();
+    fmodified = true;
 }
 
 void MainWindow::tree_delbranch_after_copy()
@@ -189,7 +193,7 @@ int i;
         leafview->setHtml("<p></p>");
     }
     catflag = 1;
-    fmodified = leafview->isModified();
+    fmodified = true;
 
 }
 
@@ -211,7 +215,7 @@ void MainWindow::tree_copybranch()
         copy_branch = cur_branch->clone();
         statustext->setText(tr("Copied category"));
     }
-
+    fmodified = true;
 }
 
 void MainWindow::tree_pastebranch()
@@ -223,6 +227,7 @@ void MainWindow::tree_pastebranch()
 
     cur_leaf->insertChild(0, copy_branch);
     statustext->setText(tr("Copied branch"));
+    fmodified = true;
 }
 
 void MainWindow::set_branch (QTreeWidgetItem *b)

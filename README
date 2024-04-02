@@ -1,4 +1,4 @@
-Treecle 1.1.4
+Treecle 1.1.5
 -------------
 Treecle creates and manages user-defined, custom-built trees.
 
@@ -8,6 +8,10 @@ Seriously, Treecle can be used to create a heirarchy of your own design,
 representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
+
+Changes in version 1.1.5
+------------------------
+1. Added code to detect modification to the data tree.
 
 Changes in version 1.1.4
 ------------------------

@@ -302,4 +302,5 @@ int i;
         i = tree->topLevelItemCount();
         leafview->setHtml("<p></p>");
     }
+    fmodified = true;
 }
