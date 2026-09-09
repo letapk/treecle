@@ -11,44 +11,55 @@
  *
  */
 
+//Last modified Sept 30, 2024
+
 #include "treecle.h"
 
+#include <cstdlib>
+
+#include <QLockFile>
+
 QString userpath;
-QString Lockfilename;
 
 void check_qtdata_dir ();
-bool check_lockfile(void);
-void create_lockfile ();
-void delete_lockfile ();
+bool acquire_lock(QLockFile *lock);
 
 int main(int argc, char *argv[])
 //start user-interface
 {
 bool ok = false;
+QString lockfilename;
 
     Q_INIT_RESOURCE(treecle);
     QApplication app(argc, argv);
 
     QTranslator appTranslator;
-    appTranslator.load("treecle_" + QLocale::system().name(), qApp->applicationDirPath());
-    app.installTranslator(&appTranslator);
+    ok = appTranslator.load("treecle_" + QLocale::system().name(), qApp->applicationDirPath());
+    if (ok == true)
+        app.installTranslator(&appTranslator);
 
     QTranslator qtTranslator;
-    qtTranslator.load("qt_" + QLocale::system().name(), qApp->applicationDirPath());
-    app.installTranslator(&qtTranslator);
+    ok = qtTranslator.load("qt_" + QLocale::system().name(), qApp->applicationDirPath());
+    if (ok == true)
+        app.installTranslator(&qtTranslator);
 
     //get the path to the user's home directory
     userpath.clear();
-    userpath.append (getenv ("HOME"));
+    const char *home = getenv ("HOME");
+    if (home == nullptr) {
+        QMessageBox::critical (nullptr, "Treecle", "Environment variable HOME is not set.\nCannot determine the user data directory.");
+        return 1;
+    }
+    userpath.append (home);
     userpath.append("/.treecle");//home/{account-name}/.treecle
 
-    Lockfilename.append(userpath);
-    Lockfilename.append("/treelockfile.lck");
+    lockfilename.append(userpath);
+    lockfilename.append("/treelockfile.lck");
 
-    ok = check_lockfile ();
-    if (ok == false)//lockfile present, exit
+    QLockFile lockfile(lockfilename);
+    ok = acquire_lock(&lockfile);
+    if (ok == false)//another instance holds the lock, exit
         return 0;
-    create_lockfile();
 
     //check for the tdj data directory and create it if required
     check_qtdata_dir();
@@ -78,25 +89,31 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     tree = new QTreeWidget ();
     tree->setColumnCount(1);
     tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    connect (tree, SIGNAL(itemClicked(QTreeWidgetItem*,int)), this, SLOT(set_branch (QTreeWidgetItem *)));
+    connect (tree, SIGNAL(itemClicked(QTreeWidgetItem*,int)), this, SLOT(set_branch(QTreeWidgetItem*)));
+    //connect (tree, SIGNAL(itemActivated(QTreeWidgetItem*,int)), this, SLOT(set_branch(QTreeWidgetItem*)));
+    connect (tree, SIGNAL(itemSelectionChanged()), this, SLOT(get_highlighted_branch()));
+    connect (tree, SIGNAL(itemChanged(QTreeWidgetItem*,int)), this, SLOT (set_modified_flag()));
     tree->setHeaderLabel(tr("Filename"));
 
-    //HTML editor on right
-    leafview = new QWebView ();
-    leafview->page()->setContentEditable(true);
-    leafview->page()->settings()->setDefaultTextEncoding("UTF-8");
+    panelshortcut = new QShortcut (this);
+    panelshortcut->setKey (Qt::CTRL | Qt::Key_Tab);
+    connect (panelshortcut, SIGNAL(activated()), this, SLOT (set_panel_focus()));
 
-    connect (leafview->page(), SIGNAL(contentsChanged()), this, SLOT(get_data_from_leaf()));
-    connect(leafview->pageAction(QWebPage::ToggleBold), SIGNAL(changed()), SLOT(adjustActions()));
+    //HTML editor on right
+    leafview = new QTextEdit (this);
+    leafdoc = new QTextDocument(leafview);
+    connect (leafdoc, SIGNAL(contentsChanged()), this, SLOT(get_data_from_leaf()));
 
     splitter->addWidget(tree);
     splitter->addWidget(leafview);
+    setCentralWidget(splitter);
 
     //status bar on the bottom
     statustext = new QLabel (this);
     statustext->setText(tr("Status messages appear here"));
     statustext->setFrameStyle(QFrame::Plain);
     statustext->setAlignment(Qt::AlignBottom);
+    statusBar()->addWidget(statustext);
 
     catflag = 1;
 
@@ -122,16 +139,16 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     //read the user's preferences
     readprefs();
 
-    this->setFocus();
+    //this->setFocus();
 }
 
 MainWindow::~MainWindow()
 {
-    delete_lockfile();
+    //the lockfile is released automatically when the QLockFile object in main() is destroyed
 }
 
 void MainWindow::quit()
 {
-    delete_lockfile();
-    MainWindow::close();
+    close();
 }
+

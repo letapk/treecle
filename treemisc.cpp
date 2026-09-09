@@ -11,33 +11,18 @@
  *
  */
 
+//Last modified Sept 30, 2024
+
 #include "treecle.h"
-#include <QDesktopServices>
 
-#define FORWARD_ACTION(action1, action2) \
-    connect(leafview->pageAction(action2), SIGNAL(changed()), SLOT(adjustActions()));
+#include <QLockFile>
 
-#define FOLLOW_CHECK(a1, a2) a1->setChecked(leafview->pageAction(a2)->isChecked())
-
-QPixmap *pix;
-QColor fontcolor;
-
-extern QString userpath, Lockfilename;
+extern QString userpath;
 extern void check_qtdata_dir ();
 
 //Much of this is shamelessly copied and hacked from the examples within the Qt software
 void MainWindow::setup_menu_and_toolbar ()
 {
-    //toolbar
-    tb1 = new QToolBar (this);
-    tb1->setGeometry(0, menuBar()->height(), menuBar()->width(), 30);
-    tb1->setFloatable (false);
-    tb1->setMovable(false);
-
-    tb2 = new QToolBar (this);
-    tb2->setGeometry(0, menuBar()->height() + tb1->height(), menuBar()->width(), 30);
-    tb2->setFloatable (false);
-    tb2->setMovable(false);
 
     //file menu
     filemenu = menuBar()->addMenu(tr("&File"));
@@ -165,8 +150,22 @@ void MainWindow::setup_menu_and_toolbar ()
     helpmenu->addAction(aboutQtitem);
     connect(aboutQtitem, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
 
+    //toolbar
+    tb1 = new QToolBar(tr("Tree tools"), this);
+    tb1->setFloatable (false);
+    tb1->setMovable(false);
+    addToolBar(tb1);
+
+    //keep the icon-heavy toolbars on separate rows so nothing overflows the window
+    addToolBarBreak();
+
+    tb2 = new QToolBar(tr("Editor tools"), this);
+    tb2->setFloatable (false);
+    tb2->setMovable(false);
+    addToolBar(tb2);
+
     actionTextBold = new QAction(QIcon::fromTheme("", QIcon(":/images/textbold.png")), tr("&Bold"), this);
-    actionTextBold->setShortcut(Qt::CTRL + Qt::Key_B);
+    actionTextBold->setShortcut(Qt::CTRL | Qt::Key_B);
     actionTextBold->setPriority(QAction::LowPriority);
     QFont bold;
     bold.setBold(true);
@@ -176,7 +175,7 @@ void MainWindow::setup_menu_and_toolbar ()
 
     actionTextItalic = new QAction(QIcon::fromTheme("", QIcon(":/images/textitalic.png")), tr("&Italic"), this);
     actionTextItalic->setPriority(QAction::LowPriority);
-    actionTextItalic->setShortcut(Qt::CTRL + Qt::Key_I);
+    actionTextItalic->setShortcut(Qt::CTRL | Qt::Key_I);
     QFont italic;
     italic.setItalic(true);
     actionTextItalic->setFont(italic);
@@ -184,7 +183,7 @@ void MainWindow::setup_menu_and_toolbar ()
     actionTextItalic->setCheckable(true);
 
     actionTextUnderline = new QAction(QIcon::fromTheme("", QIcon(":/images/textunder.png")), tr("&Underline"), this);
-    actionTextUnderline->setShortcut(Qt::CTRL + Qt::Key_U);
+    actionTextUnderline->setShortcut(Qt::CTRL | Qt::Key_U);
     actionTextUnderline->setPriority(QAction::LowPriority);
     QFont underline;
     underline.setUnderline(true);
@@ -195,47 +194,55 @@ void MainWindow::setup_menu_and_toolbar ()
     QActionGroup *grp = new QActionGroup(this);
     connect(grp, SIGNAL(triggered(QAction*)), this, SLOT(textAlign(QAction*)));
 
-    actionAlignLeft = new QAction(QIcon::fromTheme("", QIcon(":/images/textleft.png")),tr("&Left align text"), grp);
-    actionAlignCenter = new QAction(QIcon::fromTheme("",QIcon(":/images/textcenter.png")),tr("C&entered text"), grp);
-    actionAlignRight = new QAction(QIcon::fromTheme("",QIcon(":/images/textright.png")),tr("&Right align text"), grp);
-    actionAlignJustify = new QAction(QIcon::fromTheme("",QIcon(":/images/textjustify.png")),tr("&Justify text"), grp);
+    actionAlignLeft = new QAction(QIcon::fromTheme("", QIcon(":/images/textleft.png")),tr("&Left align text"), this);
+    actionAlignCenter = new QAction(QIcon::fromTheme("",QIcon(":/images/textcenter.png")),tr("C&entered text"), this);
+    actionAlignRight = new QAction(QIcon::fromTheme("",QIcon(":/images/textright.png")),tr("&Right align text"), this);
+    actionAlignJustify = new QAction(QIcon::fromTheme("",QIcon(":/images/textjustify.png")),tr("&Justify text"), this);
 
-    actionAlignLeft->setShortcut(Qt::CTRL + Qt::Key_L);
+    grp->addAction (actionAlignLeft);
+    grp->addAction (actionAlignCenter);
+    grp->addAction (actionAlignRight);
+    grp->addAction (actionAlignJustify);
+
+    actionAlignLeft->setShortcut(Qt::CTRL | Qt::Key_L);
     actionAlignLeft->setCheckable(true);
     actionAlignLeft->setPriority(QAction::LowPriority);
-    actionAlignCenter->setShortcut(Qt::CTRL + Qt::Key_E);
+
+    actionAlignCenter->setShortcut(Qt::CTRL | Qt::Key_E);
     actionAlignCenter->setCheckable(true);
     actionAlignCenter->setPriority(QAction::LowPriority);
-    actionAlignRight->setShortcut(Qt::CTRL + Qt::Key_R);
+
+    actionAlignRight->setShortcut(Qt::CTRL | Qt::Key_R);
     actionAlignRight->setCheckable(true);
     actionAlignRight->setPriority(QAction::LowPriority);
-    actionAlignJustify->setShortcut(Qt::CTRL + Qt::Key_J);
+
+    actionAlignJustify->setShortcut(Qt::CTRL | Qt::Key_J);
     actionAlignJustify->setCheckable(true);
     actionAlignJustify->setPriority(QAction::LowPriority);
 
-    QAction *actionInsertImage= new QAction(QIcon::fromTheme("", QIcon(":/images/insert-image.png")), tr("&Insert image"), this);
+    actionInsertImage= new QAction(QIcon::fromTheme("", QIcon(":/images/insert-image.png")), tr("&Insert image"), this);
     actionInsertImage->setPriority(QAction::LowPriority);
     connect(actionInsertImage, SIGNAL(triggered()), this, SLOT(insertImage()));
     actionInsertImage->setCheckable(true);
 
-    pix = new QPixmap (16, 16);
-    fontcolor = Qt::black;
-    pix->fill(fontcolor);
-    QAction *actionTextColor = new QAction(*pix, tr("Text color..."), this);
+    QPixmap pix(16, 16);
+    pix.fill(Qt::black);
+    actionTextColor = new QAction(pix, tr("Text color..."), this);
     connect(actionTextColor, SIGNAL(triggered()), this, SLOT(textColor()));
 
     comboFont = new QFontComboBox(tb2);
-    //QApplication::font().setPointSize(9);
+    comboFont->setEditable(false);
+    comboFont->setFontFilters(QFontComboBox::ScalableFonts | QFontComboBox::ProportionalFonts);
+    comboFont->addItems(QFontDatabase::families(QFontDatabase::WritingSystem (1)));
     comboFont->setCurrentFont(QApplication::font());
     connect(comboFont, SIGNAL(currentFontChanged(QFont)), this, SLOT(fontFamily()));
 
     comboSize = new QComboBox(tb2);
     comboSize->setObjectName("comboSize");
-    comboSize->setEditable(true);
-    QFontDatabase db;
-    foreach(int size, db.standardSizes())
+    comboSize->setEditable(false);
+    foreach(int size, QFontDatabase::standardSizes())
         comboSize->addItem(QString::number(size));
-    connect(comboSize, SIGNAL(activated(QString)), this, SLOT(textSize()));
+    connect(comboSize, SIGNAL(activated(int)), this, SLOT(textSize(int)));
     //QApplication::font().setPointSize(6);
     comboSize->setCurrentIndex(comboSize->findText(QString::number(6)));
 
@@ -299,126 +306,105 @@ void MainWindow::setup_menu_and_toolbar ()
     tb2->addAction(actionTextColor);
     tb2->addWidget(comboFont);
     tb2->addWidget(comboSize);
-
-    QAction *selectall = new QAction(tr(""), this);
-    connect(selectall, SIGNAL(triggered()), this, SLOT(select_all()));
 }
 
 void MainWindow::textBold()
 {
-    leafview->triggerPageAction(QWebPage::ToggleBold, true);
-    FORWARD_ACTION(actionTextBold, QWebPage::ToggleBold);
+QTextCharFormat fmt;
+
+    fmt.setFontWeight(actionTextBold->isChecked() ? QFont::Bold : QFont::Normal);
+    mergeFormatOnWordOrSelection(fmt);
 }
 
 void MainWindow::textItalic()
 {
-    leafview->triggerPageAction(QWebPage::ToggleItalic, true);
-    FORWARD_ACTION(actionTextItalic, QWebPage::ToggleItalic);
+QTextCharFormat fmt;
+
+    fmt.setFontItalic(actionTextItalic->isChecked());
+    mergeFormatOnWordOrSelection(fmt);
+
 }
 
 void MainWindow::textUnderline()
 {
-    leafview->triggerPageAction(QWebPage::ToggleUnderline, true);
-    FORWARD_ACTION(actionTextUnderline, QWebPage::ToggleUnderline);
-}
+QTextCharFormat fmt;
 
-void MainWindow::select_all()
-{
-    leafview->triggerPageAction(QWebPage::SelectAll, true);
-    FORWARD_ACTION(selectall, QWebPage::SelectAll);
-}
+    fmt.setFontUnderline(actionTextUnderline->isChecked());
+    mergeFormatOnWordOrSelection(fmt);
 
-void MainWindow::adjustActions()
-{
-    FOLLOW_CHECK(actionTextBold, QWebPage::ToggleBold);
-    FOLLOW_CHECK(actionTextItalic, QWebPage::ToggleItalic);
-    FOLLOW_CHECK(actionTextUnderline, QWebPage::ToggleUnderline);
 }
 
 void MainWindow::textAlign(QAction *a)
 {
-    if (tree->topLevelItemCount() == 0) {
-        statustext->setText(tr("The tree is empty"));
-        return;
-    }
+QTextEdit *editor;
+Qt::Alignment al;
 
-    QWebFrame *frame = leafview->page()->mainFrame();
-    if (a == actionAlignLeft) {
-        QString js = QString("document.execCommand(\"justifyLeft\", false, null)");
-        frame->evaluateJavaScript(js);
-    }
-    else if (a == actionAlignCenter) {
-        QString js = QString("document.execCommand(\"justifyCenter\", false, null)");
-        frame->evaluateJavaScript(js);
-    }
-    else if (a == actionAlignRight) {
-        QString js = QString("document.execCommand(\"justifyRight\", false, null)");
-        frame->evaluateJavaScript(js);
-    }
-    else if (a == actionAlignJustify) {
-        QString js = QString("document.execCommand(\"justifyFull\", false, null)");
-        frame->evaluateJavaScript(js);
-    }
+    editor = leafview;
+    al = editor->alignment ();
 
+    if (a == actionAlignLeft)
+        editor->setAlignment(Qt::AlignLeft);
+    else if (a == actionAlignCenter)
+        editor->setAlignment(Qt::AlignHCenter);
+    else if (a == actionAlignRight)
+        editor->setAlignment(Qt::AlignRight);
+    else if (a == actionAlignJustify)
+        editor->setAlignment(Qt::AlignJustify);
 }
 
 void MainWindow::textColor()
 {
-QColor c;
+QTextEdit *editor;
 
-    c = QColorDialog::getColor(fontcolor, this);
-    if (c.isValid()) {
-        QWebFrame *frame = leafview->page()->mainFrame();
-        QString js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("foreColor").arg(c.name());
-        frame->evaluateJavaScript(js);
-    }
-    pix->fill(c);
-    fontcolor = c;
+editor = leafview;
 
+    QColor col = QColorDialog::getColor(editor->textColor(), this);
+    if (!col.isValid())
+        return;
+    QTextCharFormat fmt;
+    fmt.setForeground(col);
+    mergeFormatOnWordOrSelection(fmt);
+    colorChanged(col);
+}
+
+void MainWindow::colorChanged(const QColor &c)
+{
+    QPixmap pix(16, 16);
+    pix.fill(c);
+    actionTextColor->setIcon(pix);
 }
 
 void MainWindow::fontFamily()
 {
-QFont f;
+QTextCharFormat fmt;
 
-    f = comboFont->currentFont();
-    QWebFrame *frame = leafview->page()->mainFrame();
-    QString js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("fontName").arg(f.family());
-    frame->evaluateJavaScript(js);
-    fmodified = true;
+    fmt.setFont(comboFont->currentFont ());
+    mergeFormatOnWordOrSelection(fmt);
 
 }
 
-void MainWindow::textSize()
+void MainWindow::textSize(int index)
+//index is the position of the highlighted number in the combobox
 {
+int i;
 QString s;
-float i;
+QTextCharFormat fmt;
 
-    if (tree->topLevelItemCount() == 0)
-        return;
-
-    s = comboSize->currentText();
-
-    //this is a kludge to get the fonts a reaonable size on my working monitor
-    //it might not be optimal on other monitors
-    i = s.toInt();// / 3.0;
-
-    QWebFrame *frame = leafview->page()->mainFrame();
-    QString js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("fontSize").arg(QString::number(i));
-    frame->evaluateJavaScript(js);
+    s = comboSize->itemText (index);
+    i = s.toInt ();
+    fmt.setFontPointSize((qreal)i);
+    mergeFormatOnWordOrSelection(fmt);
 }
+
 
 void MainWindow::insertImage()
 {
-QString filters;
-QUrl url;
-QString js;
-QWebFrame *frame;
+QString s, filters, fname;
+QFileInfo fi;
+QTextEdit *editor;
+QMessageBox msgBox;
 
-    if (tree->topLevelItemCount() == 0) {
-        statustext->setText(tr("The tree is empty. Create a branch first."));
-        return;
-    }
+    editor = leafview;
 
     filters += tr("Common Graphics (*.png *.jpg *.jpeg *.gif);;");
     filters += tr("Portable Network Graphics (PNG) (*.png);;");
@@ -432,24 +418,46 @@ QWebFrame *frame;
     if (!QFile::exists(file))
         return;
 
-    url = QUrl::fromLocalFile(file);
-    frame = leafview->page()->mainFrame();
+    fi = QFileInfo(file);
+    if (fi.path() != Homepath) {
+        //copy the file to the data subdirectory
+        fname.clear();
+        fname.append(Homepath);
+        fname.append("/");
+        fname.append(fi.fileName());
+        QFile::copy (fi.filePath(), fname);
 
-    js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("insertImage").arg(url.toString());
-    frame->evaluateJavaScript(js);
+        s.append (QObject::tr("The image file has been copied to the Treecle data directory "));
+        s.append (Homepath);
+        s.append (QObject::tr("\nClick OK to continue"));
+        msgBox.setText(s);
+        msgBox.exec();
+    }
 
-    js = QString("document.execCommand(\"%1\", false, \"%2\")").arg("insertText").arg(url.toString());
-    frame->evaluateJavaScript(js);
+    if (tree->topLevelItemCount() == 0)
+        return;
+    editor->insertHtml(QString ("<img src=\"%1/%2\">").arg(Homepath).arg(fi.fileName()));
 
+}
+
+void MainWindow::mergeFormatOnWordOrSelection(const QTextCharFormat &format)
+{
+QTextEdit *editor;
+
+    editor = leafview;
+
+    QTextCursor cursor = editor->textCursor();
+    if (!cursor.hasSelection())
+        cursor.select(QTextCursor::WordUnderCursor);
+    cursor.mergeCharFormat(format);
+    editor->mergeCurrentCharFormat(format);
 }
 
 void MainWindow::closeEvent(QCloseEvent *event)
 {
 int i;
 
-    //fmodified = leafview->isModified();
-
-    if (fmodified == true) {
+    if (file_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
@@ -464,12 +472,14 @@ int i;
             i = save_file();
             if (i == 1) {//file saved by the user
                 statustext->setText(tr("Saved"));
+                writeprefs();
+                event->accept();
             }
             else {//user cancelled the save operation
                 statustext->setText(tr("The tree has not been saved"));
+                event->ignore();
             }
-            writeprefs();
-            event->accept();
+            return;
         }
 
         if (ret == QMessageBox::Discard) {
@@ -483,35 +493,6 @@ int i;
         event->accept();
     }
 
-}
-
-void MainWindow::resizeEvent(QResizeEvent *event)
-//move and shift the widgets when the window size changes
-{
-int w, h, sh, th;
-QList<int> integerList;
-
-    w = width();
-    h = height();
-
-    //sharing of width between tree and editor
-    integerList.append(w/3);
-    integerList.append(2*w/3);
-
-    //toolbars
-    th = menuBar()->height() + tb1->height();
-    tb1->setGeometry(0, menuBar()->height(), w, 30);
-    tb2->setGeometry(0, th, w, 30);
-
-    //tree
-    sh = menuBar()->height() + tb1->height() + tb2->height();
-    splitter->setGeometry(5, sh, w-10, h-sh-30);
-
-    //move the status text area
-    statustext->setGeometry(10, h-30, w-20, 25);
-
-    //pass the event up the chain
-    QWidget::resizeEvent(event);
 }
 
 void MainWindow::help()
@@ -534,9 +515,16 @@ QMessageBox msgBox;
         msgBox.exec();
     }
     else {
-        QDesktopServices::openUrl (QUrl (Helpfilename));
+        s1.append ("file://");
+        s1.append (Helpfilename);
+        ok = QDesktopServices::openUrl (QUrl (s1));
+        if (ok == false) {
+            msgBox.setText("Could not open help file.");
+            msgBox.exec();
+        }
     }
 }
+
 void MainWindow::about()
 //open a window to show program information and copyright license
 {
@@ -550,6 +538,7 @@ bool ok;
         return;
 
     gnugpl = new QTextBrowser ();
+    gnugpl->setAttribute(Qt::WA_DeleteOnClose);
     gnugpl->setGeometry(100, 100, 800, 600);
     gnugpl->setWindowTitle (QObject::tr("About Treecle"));
     gnugpl->setPlainText(in.readAll());
@@ -586,61 +575,101 @@ QMessageBox msgBox;
     }
 }
 
-void create_lockfile ()
-{
-    QFile file(Lockfilename);
-    file.open(QFile::WriteOnly);
-    file.close();
-}
-
-void delete_lockfile ()
-{
-    QFile file(Lockfilename);
-    file.remove();
-}
-
-bool check_lockfile (void)
+bool acquire_lock(QLockFile *lock)
 {
 QMessageBox msgBox;
 QString s1, s2, s3;
+qint64 pid = -1;
+QString host, app;
 bool ok = false;
 
-    //s1.append (Lockfilename);
-    //msgBox.setText(s1);
-    //msgBox.exec();
+    ok = lock->tryLock();
+    if (ok == true)//lock acquired, single instance, continue
+        return true;
 
-    QFile file(Lockfilename);
-    ok = file.open(QFile::ReadOnly);
-    if (ok == true) {//lockfile present, close it and inform user
-        file.close();
+    //the lock file already exists - a stale lock is removed automatically by
+    //tryLock(), so a persistent lock means another live instance holds it
+    lock->getLockInfo(&pid, &host, &app);
 
-        s1 = QObject::tr("It seems that \"Treecle\" is already running.");
+    s1 = QObject::tr("It seems that \"Treecle\" is already running.");
+
+    if (pid > 0) {//the lock file holds the identity of the other instance
+        s2 = QObject::tr("Click \"Continue\" to start another instance,\nelse click \"Abort\". ");
+        s3 = QObject::tr("The other instance has the process ID ");
+        s3.append (QString::number(pid));
+        s3.append (QObject::tr(" and runs on the host \""));
+        s3.append (host);
+        s3.append (QObject::tr("\". "));
+        s3.append (QObject::tr("If Treecle is not running, its lock is stale and \"Continue\" removes it. "));
+        s3.append (QObject::tr("See the user manual about the risks of running two instances of the program at the same time.\n"));
+    }
+    else {//the lock file could not be read
         s2 = QObject::tr("If this is not the case, click \"Continue\", else click \"Abort\". ");
         s3 = QObject::tr("A lockfile has been found in the hidden treecle data-subdirectory. ");
         s3.append (QObject::tr("The program may be currently running in another window, in which case click \"Abort\". "));
-        s3.append (QObject::tr("Alternatively, an earlier instance of the program may have failed to delete the lockfile. "));
-        s3.append (QObject::tr("If you are sure that treecle is not running in this account, click \"Continue\". "));
+        s3.append (QObject::tr("If you are sure that treecle is not running in this account, click \"Continue\" to remove it. "));
         s3.append (QObject::tr("See the user manual about the risks of running two instances of the program at the same time.\n"));
-        //s3.append (Lockfilename);
-
-        msgBox.setText(s1);
-        msgBox.setInformativeText(s2);
-        msgBox.setDetailedText(s3);
-
-        msgBox.addButton(QObject::tr("Continue"), QMessageBox::ApplyRole);
-        msgBox.addButton(QObject::tr("Abort"), QMessageBox::RejectRole);
-
-        int ret = msgBox.exec();
-        switch (ret) {
-            case QMessageBox::ApplyRole://continue
-                file.remove();
-                return true;
-                break;
-            case QMessageBox::RejectRole://abort
-                return false;
-                break;
-        }
     }
 
-    return true;//lockfile absent
+    msgBox.setText(s1);
+    msgBox.setInformativeText(s2);
+    msgBox.setDetailedText(s3);
+
+    msgBox.addButton(QObject::tr("Continue"), QMessageBox::AcceptRole);
+    msgBox.addButton(QObject::tr("Abort"), QMessageBox::RejectRole);
+
+    msgBox.exec();
+    QAbstractButton *btn = msgBox.clickedButton();
+
+    if (btn == nullptr || msgBox.buttonRole(btn) != QMessageBox::AcceptRole)//abort or dialog closed
+        return false;
+
+    //Continue: the lock may be stale (its owner process is gone). Remove it and retry.
+    lock->removeStaleLockFile();
+    ok = lock->tryLock();
+    if (ok == true)//lock acquired after removing the stale lock
+        return true;
+
+    //a live instance really holds the lock - run without a lock anyway
+    QMessageBox::warning(nullptr, "Treecle",
+        QObject::tr("Treecle is still running in another window.\n"
+                    "Starting a second instance without a lock;\nsaving the same tree from both windows may lose data."));
+    return true;
+}
+
+void MainWindow::set_panel_focus()
+{
+    if (leafview->hasFocus ())
+        set_tree_focus ();
+    else if (tree->hasFocus ())
+        set_editor_focus ();
+}
+
+void MainWindow::set_editor_focus()
+{
+    leafview->setFocus ();
+}
+
+void MainWindow::set_tree_focus()
+{
+    tree->setFocus ();
+}
+
+QTreeWidgetItem* MainWindow::get_highlighted_branch()
+{
+QTreeWidgetItem *it;
+
+    it = tree->currentItem();
+    if (it == nullptr)
+        return nullptr;
+    tree->setFocus ();
+    set_branch(it);
+
+    return (it);
+}
+
+void MainWindow::set_modified_flag()
+{
+    if (file_read_in_progress == false && branch_display_in_progress == false)
+        file_modified = true;
 }

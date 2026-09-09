@@ -1,4 +1,4 @@
-Treecle 1.1.5
+Treecle 1.1.6
 -------------
 Treecle creates and manages user-defined, custom-built trees.
 
@@ -8,6 +8,14 @@ Seriously, Treecle can be used to create a heirarchy of your own design,
 representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
+
+Changes in version 1.1.6
+------------------------
+1. Removed Webkit. This is no longer supported by the Qt toolkit above version 6.
+2. Minor changes to the UI.
+3. Added spellcheck.
+4. Added keyboard shortcuts to navigate between the editor and the tree panels.
+5. Modified lockfile behavior code, plus other bug fixes.
 
 Changes in version 1.1.5
 ------------------------
@@ -44,27 +52,30 @@ Changes in version 1.1
 
 Availability
 ------------
-Treecle is available as source code to compile on your own machine, or as a
-package containing binaries to install and use.
-
-Compiling the source
---------------------
-ALl the source files are available on Github under the following link:
+Treecle is available as source code to compile on your own machine.
+All the source files are available on Github under the following link:
 https://github.com/letapk/treecle
 
 The repository is public. Anyone can check out the branch onto her local machine.
 
+Compiling the source
+--------------------
 You will need the libraries and developement files from Qt, which are
-available from the depository of your Linux distribution or from www.qt.io.
+available from the depository of your Linux distribution or from "https://www.qt.io".
 
-You will also need the QtWebKit and QtWebKitWidgets package as well, since
-new versions of Qt do not include them anymore.
-These should contain and provide the developement files and libraries compatible with the
-version of Qt on your system.
+You will also need the spellcheck package for Qt (libqtspell-qt6-dev) which may be available
+from the package manager of your distribution. Alternatively it can be obtained from
+GitHub ("https://github.com/manisandro/qtspell"). You may need to modify "CMakeLists.txt"
+appropriately for your system to build the QtSpell libraries. After they are built, move them to
+a standard location such as "/usr/local/lib64" and the QtSpell headers to "/usr/local/include".
 
-The current source tree compiles and runs using Qt version 5.15.2 under Kubuntu 22.04.
+Since the spellcheck code also requires the "enchant" spell-checking library, that will have to be
+installed as well. This should be available through the package manager of your distribution.
 
-If you are using QtCreator, load the project file treecle.pro which is available in the source
+The current source tree compiles and runs using Qt version 6.5 LTS under OpenSUSE Tumbleweed
+with Plasma as the desktop.
+
+If you are using QtCreator, load the project file "treecle.pro" which is available in the source
 package. Select the version you want to build (debug version or release version) and hit
 Ctrl-B. If there are no problems, this should build the binary.
 
@@ -78,17 +89,16 @@ in a terminal should create a Makefile for your system. Then, running:
 should create a running binary.
 
 If you are using QtCreator, the location of the locally compiled binary will be
-available from within QtCreator. From this location copy the binary to a place from where
-everyone working on the computer can run it.
+available from within QtCreator. From this location copy the binary to a place which
+is included in the system's path. For example, in a terminal window give the command:
 
-In a terminal window give the command:
-sudo cp ./treecle /usr/local/bin/treecle
+>sudo cp ./treecle /usr/local/bin/treecle
 Enter the password when prompted.
 
 This copies the binary to /usr/local/bin. if you need the German language translation, then do:
 sudo cp ./treecle_de.qm /usr/local/bin/treecle_de.qm
 
-When executing the program for the first time in any account, a message notifying the creation of
+When executing the program for the first time in any user's account, a message notifying the creation of
 a hidden subdirectory named ".treecle" will appear. In order to view the online help, the presence
 of the help file (treeclehelp.pdf) in this location is required.
 
@@ -105,8 +115,12 @@ is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY;
 without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
 PARTICULAR PURPOSE.  See the GNU General Public License for more details.  You
 will receive a copy of the GNU General Public License along with this program;
-for more information, write to the Free Software  oundation, Inc., 675 Mass
+for more information, write to the Free Software Foundation, Inc., 675 Mass
 Ave, Cambridge, MA 02139, USA.
+
+The QtSpell files in this software are being used in compliance with the
+license under which they have been made available. Many thanks to the
+author (Sandro Mani <manisandro@gmail.com>) for the package.
 
 What else?
 ----------

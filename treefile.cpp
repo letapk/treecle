@@ -11,16 +11,21 @@
  *
  */
 
+//Last modified Sept 25, 2024
+
 #include "treecle.h"
+
+//sanity limits for .trc parsing (survive corrupt or hostile files)
+static const qint64 MAX_BRANCH_LENGTH = 50 * 1024 * 1024;
+static const int MAX_CATEGORIES = 100000;
+static const int MAX_CHILDREN = 100000;
 
 int MainWindow::new_file()
 {
 int i;
 QString s;
 
-    //fmodified = leafview->isModified();
-
-    if (fmodified == true) {
+    if (file_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
@@ -32,11 +37,14 @@ QString s;
         if (ret == QMessageBox::Save) {
             i = save_file();
             if (i == 1) {//file saved by the user
-                delete_tree();
-                tree->setHeaderLabel("Filename");
                 s.append (tr("Saved "));
                 s.append (Currentfile);
                 statustext->setText(s);
+                delete_tree();
+                tree->setHeaderLabel("Filename");
+                Currentfile.clear();
+                Currentfile.append("Noname.trc");
+                file_modified = false;
             }
             else {//user cancelled the save operation using the cancel button in the file dialog
                 statustext->setText(tr("Tree has not been saved"));
@@ -47,7 +55,7 @@ QString s;
             delete_tree();
             tree->setHeaderLabel("Filename");
             statustext->setText(tr("Tree discarded"));
-            fmodified = false;
+            file_modified = false;
             return 0;
         }
     }
@@ -57,8 +65,8 @@ QString s;
         statustext->setText(tr("New file"));
         Currentfile.clear();
         Currentfile.append("Noname.trc");
+        file_modified = false;
     }
-    //fmodified = leafview->isModified();
 
     return 0;
 }
@@ -81,11 +89,20 @@ bool ok;
     if (ok == false)
         return;
     QTextStream in(&file);
-    in.setCodec("UTF-8");
+    //in.setCodec("UTF-8");
+    in.setEncoding (QStringConverter::Utf8);
 
     QFileInfo fi(fn);
-
+    file_read_in_progress = true;
     in >> catcount;
+    if (in.status() != QTextStream::Ok || catcount < 0 || catcount > MAX_CATEGORIES) {
+        file.close();
+        delete_tree();
+        file_read_in_progress = false;
+        file_modified = false;
+        statustext->setText(tr("The file is not a valid Treecle file or is corrupt"));
+        return;
+    }
     //loop over categories
     for (i = 0; i < catcount; i++){
         //create new top level category
@@ -97,15 +114,25 @@ bool ok;
     file.close();
 
     cat = tree->topLevelItem(0);
+    if (cat == nullptr) {
+        statustext->setText(tr("The file contains no data"));
+        Currentfile = fn;
+        file_read_in_progress = false;
+        file_modified = false;
+        return;
+    }
     set_branch(cat);
-    show_branch_data ();
     tree->setHeaderLabel(fi.fileName());
 
     s.append (tr("Read "));
+
     s.append (fn);
     statustext->setText(s);
-    fmodified = false;
     Currentfile = fn;
+    file_read_in_progress = false;
+    file_modified = false;
+    tree->setFocus ();
+
 }
 
 void MainWindow::read_this_branch (QTreeWidgetItem *cat, QTextStream *in)
@@ -113,10 +140,12 @@ void MainWindow::read_this_branch (QTreeWidgetItem *cat, QTextStream *in)
 QTreeWidgetItem *leaf;
 QString s;
 qint64 i;
-int j, childnum;
+int j = 0, childnum = 0;
 
     //length of branch name
     *in >> j;
+    if (in->status() != QTextStream::Ok || j < 0 || j > MAX_BRANCH_LENGTH)
+        return;
     //go to next line (otherwise the CR becomes part of the string s below)
     s = in->readLine();
     i = (qint64)j;
@@ -128,6 +157,8 @@ int j, childnum;
 
     //length of branch data
     *in >> j;
+    if (in->status() != QTextStream::Ok || j < 0 || j > MAX_BRANCH_LENGTH)
+        return;
     //go to next line (otherwise the CR becomes part of the string s below)
     s = in->readLine();
     i = (qint64)j;
@@ -139,6 +170,8 @@ int j, childnum;
 
     //read the no. of children in this branch
     *in >> childnum;
+    if (in->status() != QTextStream::Ok || childnum < 0 || childnum > MAX_CHILDREN)
+        return;
 
     //loop over children, if any
     if (childnum > 0) {
@@ -157,15 +190,13 @@ QString s;
 int i;
 bool ok;
 
-    fmodified = leafview->isModified();
-
-    if (tree->topLevelItemCount() == 0 || fmodified == false) {
+    if (tree->topLevelItemCount() == 0 || file_modified == false) {
         statustext->setText(tr("Nothing to save"));
         return 0;
     }
 
     if (Currentfile == "Noname.trc") {
-        save_file_as();
+        return save_file_as();
     }
     /*
     QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
@@ -185,7 +216,8 @@ bool ok;
         return 0;
 
     QTextStream out(&file);
-    out.setCodec("UTF-8");
+    //out.setCodec("UTF-8");
+    out.setEncoding (QStringConverter::Utf8);
 
     catcount = tree->topLevelItemCount();
     out << catcount << "\n";
@@ -204,7 +236,7 @@ bool ok;
     s.append (tr("Saved "));
     s.append (Currentfile);
     statustext->setText(s);
-    fmodified = false;
+    file_modified = false;
     return 1;
 }
 
@@ -214,8 +246,6 @@ QTreeWidgetItem *cat;
 QString s;
 int i;
 bool ok;
-
-    fmodified = leafview->isModified();
 
     QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Homepath), tr("Treecle files (*.trc);;All files (*)"));
     QFileInfo fi(fn);
@@ -232,7 +262,8 @@ bool ok;
         return 0;
 
     QTextStream out(&file);
-    out.setCodec("UTF-8");
+    //out.setCodec("UTF-8");
+    out.setEncoding (QStringConverter::Utf8);
 
     catcount = tree->topLevelItemCount();
     out << catcount << "\n";
@@ -251,8 +282,8 @@ bool ok;
     s.append (tr("Saved "));
     s.append (fn);
     statustext->setText(s);
-    fmodified = false;
     Currentfile = fn;
+    file_modified = false;
 
     return 1;
 }
@@ -294,13 +325,12 @@ int i, childnum;
 
 void MainWindow::delete_tree ()
 {
-int i;
+    tree->clear();
 
-    i = tree->topLevelItemCount();
-    while (i > 0) {
-        tree->takeTopLevelItem(0);
-        i = tree->topLevelItemCount();
-        leafview->setHtml("<p></p>");
-    }
-    fmodified = true;
+    cur_branch = nullptr;
+    cur_leaf = nullptr;
+    catflag = 1;
+    leafdoc->setHtml("<p></p>");
+    //status text here
+    statustext->setText(tr("File modified"));
 }

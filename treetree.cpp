@@ -11,11 +11,13 @@
  *
  */
 
+//Last modified Sept 25, 2024
+
 #include "treecle.h"
 
 void collapse (QTreeWidgetItem *t);
 void expand (QTreeWidgetItem *t);
-void srch_sub(QTreeWidgetItem *t, QString s);
+void srch_sub(QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &srchlst);
 QTreeWidgetItem *srch_cat (QTreeWidgetItem *t, QString s);
 
 void MainWindow::tree_addbranch()
@@ -39,15 +41,11 @@ QString s;
 
     tree->setCurrentItem(b);
 
-    statustext->setText(tr("Added a new category"));
     show_branch_data ();
 
-    leafview->triggerPageAction(QWebPage::SelectAll, false);
-    textSize();
-    fontFamily();
-    leafview->findText("");
-
-    fmodified = true;
+    file_modified = true;
+    //status text here
+    statustext->setText(tr("Added a new category. File modified"));
 }
 
 void MainWindow::tree_addsubbranch()
@@ -79,27 +77,22 @@ QTreeWidgetItem *b;
     cur_leaf = b;
     tree->setCurrentItem(b);
 
-    statustext->setText(tr("Added a new branch"));
     show_branch_data ();
-
-    leafview->triggerPageAction(QWebPage::SelectAll, false);
-    textSize();
-    fontFamily();
-    leafview->findText("");
-    fmodified = true;
+    file_modified = true;
+    statustext->setText(tr("Added a new branch. File modified"));
 }
 
 void MainWindow::tree_delbranch()
 {
 int i, j, childcount;
-QTreeWidgetItem *b;
+QTreeWidgetItem *b, *deleted;
 
     if (tree->topLevelItemCount() == 0) {
         statustext->setText(tr("The tree is empty"));
         return;
     }
 
-    childcount = cur_leaf->childCount();
+    childcount = (cur_leaf == nullptr) ? 0 : cur_leaf->childCount();
     if (childcount > 0) {
         QMessageBox msgBox;
         msgBox.setText(tr("The branch contains a sub-branch. Delete it first.\n""Click OK to continue"));
@@ -109,28 +102,35 @@ QTreeWidgetItem *b;
 
     if (catflag == 0){//subbranch
         b = cur_leaf->parent();
-        cur_leaf->setText(0, "");
-        cur_leaf->setText(1, "");
-        b->removeChild(cur_leaf);
-        statustext->setText(tr("Deleted sub-branch"));
+        if (b == nullptr)
+            return;
+        deleted = cur_leaf;
+        b->removeChild(deleted);
+        delete deleted;
         set_branch(b);
-        fmodified = true;
+        //status text here
+        statustext->setText(tr("Deleted sub-branch. File modified"));
 
         return;
     }
     else {//category
         i = tree->indexOfTopLevelItem(cur_branch);
-        cur_branch->setText(0, "");
-        cur_branch->setText(1, "");
+        if (i < 0)
+            return;
+        deleted = cur_branch;
         if (i > 0) {
             cur_branch = tree->topLevelItem(i-1);
         }
-        else {
+        else if (tree->topLevelItemCount() > 1) {
             cur_branch = tree->topLevelItem(1);
+        }
+        else {
+            cur_branch = nullptr;
         }
 
         tree->takeTopLevelItem(i);
-        statustext->setText(tr("Deleted category"));
+        delete deleted;
+        statustext->setText(tr("Deleted category. File modified"));
     }
     j = tree->topLevelItemCount();
     if (j > 0) {
@@ -138,12 +138,13 @@ QTreeWidgetItem *b;
         set_branch(cur_branch);
     }
     else {
+        cur_branch = nullptr;
+        cur_leaf = nullptr;
         statustext->setText(tr("The tree is empty"));
-        leafview->setHtml("<p></p>");
+        leafdoc->setHtml("<p></p>");
     }
     catflag = 1;
-    fmodified = true;
-
+    file_modified = true;
 }
 
 void MainWindow::tree_cutbranch()
@@ -155,49 +156,62 @@ void MainWindow::tree_cutbranch()
 
     tree_copybranch();
     tree_delbranch_after_copy();
-    fmodified = true;
+    file_modified = true;
+    //status text here
+    statustext->setText(tr("File modified"));
 }
 
 void MainWindow::tree_delbranch_after_copy()
 {
 int i;
+QTreeWidgetItem *deleted;
+
+    if (tree->topLevelItemCount() == 0) {
+        statustext->setText(tr("The tree is empty"));
+        return;
+    }
 
     if (catflag == 0){//subbranch
         cur_branch = cur_leaf->parent();
-        cur_leaf->setText(0, "");
-        cur_leaf->setText(1, "");
-        cur_branch->removeChild(cur_leaf);
-        statustext->setText(tr("Deleted sub-branch"));
+        if (cur_branch == nullptr)
+            return;
+        deleted = cur_leaf;
+        cur_branch->removeChild(deleted);
+        delete deleted;
+        statustext->setText(tr("Deleted sub-branch. File modified"));
     }
     else {//category
         i = tree->indexOfTopLevelItem(cur_branch);
-        cur_branch->setText(0, "");
-        cur_branch->setText(1, "");
+        if (i < 0)
+            return;
+        deleted = cur_branch;
         if (i > 0) {
             cur_branch = tree->topLevelItem(i-1);
         }
-        else {
+        else if (tree->topLevelItemCount() > 1) {
             cur_branch = tree->topLevelItem(1);
+        }
+        else {
+            cur_branch = nullptr;
         }
 
         tree->takeTopLevelItem(i);
-        statustext->setText(tr("Deleted category"));
+        delete deleted;
+        statustext->setText(tr("Deleted category. File modified"));
     }
     if (tree->topLevelItemCount() > 0) {
         cur_leaf = cur_branch;
         set_branch(cur_branch);
-        show_branch_data ();
     }
     else {
+        cur_branch = nullptr;
+        cur_leaf = nullptr;
         statustext->setText(tr("The tree is empty"));
-        leafview->setHtml("<p></p>");
+        leafdoc->setHtml("<p></p>");
     }
+    file_modified = true;
     catflag = 1;
-    fmodified = true;
-
 }
-
-QTreeWidgetItem *copy_branch;
 
 void MainWindow::tree_copybranch()
 {
@@ -206,16 +220,18 @@ void MainWindow::tree_copybranch()
         return;
     }
 
-    copy_branch = new QTreeWidgetItem ();
     if (catflag == 0){//subbranch
+        if (copy_branch != nullptr)
+            delete copy_branch;
         copy_branch = cur_leaf->clone();
-        statustext->setText(tr("Copied sub-branch"));
+        statustext->setText(tr("Copied sub-branch."));
     }
     else {//category
+        if (copy_branch != nullptr)
+            delete copy_branch;
         copy_branch = cur_branch->clone();
-        statustext->setText(tr("Copied category"));
+        statustext->setText(tr("Copied category."));
     }
-    fmodified = true;
 }
 
 void MainWindow::tree_pastebranch()
@@ -225,15 +241,21 @@ void MainWindow::tree_pastebranch()
         return;
     }
 
+    if (copy_branch == nullptr) {
+        statustext->setText(tr("Nothing to paste. Copy or cut a branch first."));
+        return;
+    }
+
     cur_leaf->insertChild(0, copy_branch);
-    statustext->setText(tr("Copied branch"));
-    fmodified = true;
+    copy_branch = nullptr;
+    statustext->setText(tr("Copied branch. File modified"));
 }
 
 void MainWindow::set_branch (QTreeWidgetItem *b)
 //item clicked
 {
-//QString s;
+    if (b == nullptr)
+        return;
 
     if (b->parent() != NULL) {//leaf item
         //leaf and branch are different
@@ -257,24 +279,39 @@ void MainWindow::show_branch_data()
 {
 QString s;
 QByteArray d;
+QFont font;
+
+    //set the flag first, so all programmatic writes below (modify_name, the
+    //contentsChanged write-back from setHtml) are not counted as user changes
+    branch_display_in_progress = true;
 
     s.clear();
     if (catflag == 0){//subbranch selected
+        if (cur_leaf == nullptr){
+            branch_display_in_progress = false;
+            return;
+        }
         s.append(cur_leaf->text(1));
         modify_name (cur_leaf);
     }
     else {//category selected
+        if (cur_branch == nullptr){
+            branch_display_in_progress = false;
+            return;
+        }
         s.append(cur_branch->text(1));
         modify_name(cur_branch);
     }
 
     d = s.toUtf8();
 
-    leafview->setContent(d, "text/html");
-    leafview->page()->setContentEditable(true);
-    leafview->page()->setLinkDelegationPolicy(QWebPage::DelegateAllLinks);
-    fmodified = leafview->isModified();
+    font = comboFont->currentFont ();
+    leafdoc->setHtml (d);
+    leafview->setDocument (leafdoc);
+    leafview->setCurrentFont (font);
+    checker.setTextEdit (leafview);
 
+    branch_display_in_progress = false;
 }
 
 void MainWindow::modify_name (QTreeWidgetItem *b)
@@ -298,28 +335,33 @@ int i;
 void MainWindow::get_data_from_leaf()
 {
 QString s;
-//QTextEdit *textEdit = new QTextEdit;
 
+
+    if (file_read_in_progress == true)
+        return;
+    if (branch_display_in_progress == true)
+        return;
     if (tree->topLevelItemCount() == 0) {
         statustext->setText(tr("The tree is empty"));
-        leafview->setHtml("<p></p>");
-        fmodified = leafview->isModified();
-
+        //leafdoc->setHtml("<p></p>");
         return;
     }
     s.clear();
 
-    s = leafview->page()->mainFrame()->toHtml();
+    s = leafdoc->toHtml();
+
     if (catflag == 1) {
+        if (cur_branch == nullptr)
+            return;
         cur_branch->setText(1, s);
         modify_name(cur_branch);
     }
     else {
+        if (cur_leaf == nullptr)
+            return;
         cur_leaf->setText(1, s);
         modify_name(cur_leaf);
     }
-    fmodified = leafview->isModified();
-
 }
 
 void MainWindow::expand_tree()
@@ -408,9 +450,6 @@ int tlc;
     tree->sortItems(0, Qt::DescendingOrder);
 }
 
-QList<QTreeWidgetItem *> srchlst;
-static int srch_idx;
-
 void MainWindow::tree_srch_nxt()
 {
 QTreeWidgetItem *cat;
@@ -428,6 +467,10 @@ int i, sz;
         statustext->setText(tr("Please enter text in search box"));
         return;
     }
+    if (s != last_search_text) {
+        srch_idx = 0;
+        last_search_text = s;
+    }
 
     foreach (cat, srchlst) {
         cat->setSelected(false);
@@ -438,18 +481,19 @@ int i, sz;
     for (i = 0; i < catcount; i++){
         //next top level category
         cat = tree->topLevelItem(i);
-        srch_sub (cat, s);
+        srch_sub (cat, s, srchlst);
     }
 
     sz = srchlst.size();
     if (sz > 0) {
+        if (srch_idx >= sz)
+            srch_idx = 0;
         set_branch(srchlst[srch_idx]);
         s1 = QString(tr("Displaying %1 of %2 occurences")).arg(srch_idx+1).arg(sz);
         statustext->setText(s1);
     }
     else
         statustext->setText("Text not found");
-    //printf ("size=%i, idx=%i\n", sz, srch_idx);
     srch_idx++;
     if (srch_idx >= sz)
         srch_idx = 0;
@@ -472,6 +516,10 @@ int i, sz;
         statustext->setText(tr("Please enter text in search box"));
         return;
     }
+    if (s != last_search_text) {
+        srch_idx = 0;
+        last_search_text = s;
+    }
 
     foreach (cat, srchlst) {
         cat->setSelected(false);
@@ -482,7 +530,7 @@ int i, sz;
     for (i = 0; i < catcount; i++){
         //next top level category
         cat = tree->topLevelItem(i);
-        srch_sub (cat, s);
+        srch_sub (cat, s, srchlst);
     }
 
     sz = srchlst.size();
@@ -499,7 +547,7 @@ int i, sz;
         srch_idx = 0;
 }
 
-void srch_sub (QTreeWidgetItem *t, QString s)
+void srch_sub (QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &srchlst)
 {
 QString s1;
 int i, childcount;
@@ -507,15 +555,14 @@ int i, childcount;
     s1 = t->text(1);
     t->setSelected(false);
     //check current branch
-    if (s1.contains(&s, Qt::CaseInsensitive) == true) {
+    if (s1.contains(s, Qt::CaseInsensitive) == true) {
         srchlst.append(t);
     }
     //go down the sub-branches
     childcount = t->childCount();
     if (childcount > 0) {
         for (i = 0; i < childcount; i++) {
-            srch_sub (t->child(i), s);
+            srch_sub (t->child(i), s, srchlst);
         }
     }
-
 }

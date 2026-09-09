@@ -11,9 +11,12 @@
  *
  */
 
+//Last modified Sept 30, 2024
+
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
 
+#include <QWidget>
 #include <QApplication>
 #include <QMainWindow>
 #include <QString>
@@ -33,55 +36,66 @@
 #include <QColorDialog>
 #include <QTextStream>
 #include <QMessageBox>
+#include <QStatusBar>
 #include <QImageReader>
 #include <QMouseEvent>
 #include <QLineEdit>
 #include <QSettings>
 #include <QTranslator>
-#include <QtWebKit>
-#include <QtWebKitWidgets>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QActionGroup>
+#include <QFontDatabase>
+#include <QShortcut>
+#include "QtSpell.hpp"
 
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
 
-    QMenu *filemenu, *helpmenu, *treemenu;
+    QMenu *filemenu = nullptr, *helpmenu = nullptr, *treemenu = nullptr;
 
     //toolbar
-    QToolBar *tb1, *tb2;
+    QToolBar *tb1 = nullptr, *tb2 = nullptr;
 
     //some global actions needed in other methods
-    QAction *actionTextBold, *actionTextItalic, *actionTextUnderline;
-    QAction *actionAlignLeft, *actionAlignCenter, *actionAlignRight, *actionAlignJustify;
-    QAction *selectall;
+    QAction *actionTextBold = nullptr, *actionTextColor = nullptr, *actionTextItalic = nullptr, *actionTextUnderline = nullptr;
+    QAction *actionAlignLeft = nullptr, *actionAlignCenter = nullptr, *actionAlignRight = nullptr, *actionAlignJustify = nullptr;
+    QAction *actionInsertImage = nullptr;
 
-    QFontComboBox *comboFont;
-    QComboBox *comboSize;
-    QLineEdit *srchbox;
+    QFontComboBox *comboFont = nullptr;
+    QComboBox *comboSize = nullptr;
+    QLineEdit *srchbox = nullptr;
 
-    QSplitter *splitter;
-    QTreeWidget *tree;
-    QTreeWidgetItem *cur_branch, *cur_leaf;
+    QSplitter *splitter = nullptr;
+    QTreeWidget *tree = nullptr;
+    QTreeWidgetItem *cur_branch = nullptr, *cur_leaf = nullptr;
+    QTreeWidgetItem *copy_branch = nullptr;
+    QList<QTreeWidgetItem *> srchlst;
+    int srch_idx = 0;
+    QString last_search_text;
 
-    //QWebEngineView *leafview;
-    QWebView *leafview;
+    QTextEdit *leafview = nullptr;
+    QTextDocument *leafdoc = nullptr;
 
     //whether current branch is a top level category or a child, no. of categories
-    int catflag, catcount;
-    //whether the data has been altered
-    bool fmodified = false;
+    int catflag = 0, catcount = 0;
 
-    QLabel *statustext;
+    QLabel *statustext = nullptr;
 
     QString Gnugplfilename;
     QString Helpfilename;
     //stores the path to the data subdirectory
     QString Homepath;
     QString Currentfile;
+    QtSpell::TextEditChecker checker;
 
+    QShortcut *panelshortcut = nullptr;
+
+    bool file_read_in_progress = false, file_modified = false, branch_display_in_progress = false;
 
 public:
-    MainWindow(QWidget *parent = 0);
+    MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
 public slots:
@@ -130,21 +144,18 @@ public slots:
     void textBold();
     void textItalic();
     void textUnderline();
-    void textAlign(QAction*);
+    void textAlign(QAction *a);
     void textColor();
+    void mergeFormatOnWordOrSelection(const QTextCharFormat &format);
+    void colorChanged(const QColor &c);
 
     void fontFamily();
-    void textSize();
+    void textSize(int index);
 
     void insertImage();
 
-    void adjustActions();
-
-    void select_all();
-
     //virtual slots
     void closeEvent(QCloseEvent *event);
-    void resizeEvent(QResizeEvent *event);
 
     //load data in editor
     void show_branch_data ();
@@ -152,6 +163,13 @@ public slots:
     //preferences
     void writeprefs();
     void readprefs();
+
+    void set_panel_focus();
+    void set_editor_focus();
+    void set_tree_focus();
+    QTreeWidgetItem* get_highlighted_branch();
+    void set_modified_flag();
+
 };
 
 #endif // MAINWINDOW_H
