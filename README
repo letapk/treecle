@@ -72,7 +72,7 @@ a standard location such as "/usr/local/lib64" and the QtSpell headers to "/usr/
 Since the spellcheck code also requires the "enchant" spell-checking library, that will have to be
 installed as well. This should be available through the package manager of your distribution.
 
-The current source tree compiles and runs using Qt version 6.5 LTS under OpenSUSE Tumbleweed
+The current source tree compiles and runs using Qt version 6.11 under OpenSUSE Tumbleweed
 with Plasma as the desktop.
 
 If you are using QtCreator, load the project file "treecle.pro" which is available in the source
