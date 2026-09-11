@@ -11,9 +11,11 @@
  *
  */
 
-//Last modified 9 Sept 2026
+//Last modified Sept 11, 2026
 
 #include "treecle.h"
+
+#include <utility>
 
 void collapse (QTreeWidgetItem *t);
 void expand (QTreeWidgetItem *t);
@@ -303,8 +305,12 @@ QFont font;
         modify_name(cur_branch);
     }
 
+    //shrink oversized data-dir images so their width fits the editor panel
+    s = fit_images_to_width(s, DataDir, qMax(60, leafview->viewport()->width() - 30));
     d = s.toUtf8();
 
+    //resolve relative image links (bare filenames) against the data directory
+    leafdoc->setBaseUrl (QUrl::fromLocalFile(DataDir + "/"));
     font = comboFont->currentFont ();
     leafdoc->setHtml (d);
     leafview->setDocument (leafdoc);
@@ -349,6 +355,8 @@ QString s;
     s.clear();
 
     s = leafdoc->toHtml();
+    //keep stored branches portable: display sizes are transient, so drop them
+    s = strip_image_sizes(s);
 
     if (catflag == 1) {
         if (cur_branch == nullptr)
@@ -435,6 +443,7 @@ int tlc;
     }
 
     tree->sortItems(0, Qt::AscendingOrder);
+    file_modified = true;//the saved order of the tree has changed
 }
 
 void MainWindow::sort_desc_tree()
@@ -448,6 +457,7 @@ int tlc;
     }
 
     tree->sortItems(0, Qt::DescendingOrder);
+    file_modified = true;//the saved order of the tree has changed
 }
 
 void MainWindow::tree_srch_nxt()
@@ -472,8 +482,8 @@ int i, sz;
         last_search_text = s;
     }
 
-    foreach (cat, srchlst) {
-        cat->setSelected(false);
+    for (QTreeWidgetItem *occ : std::as_const(srchlst)) {
+        occ->setSelected(false);
     }
     srchlst.clear();
 
@@ -521,8 +531,8 @@ int i, sz;
         last_search_text = s;
     }
 
-    foreach (cat, srchlst) {
-        cat->setSelected(false);
+    for (QTreeWidgetItem *occ : std::as_const(srchlst)) {
+        occ->setSelected(false);
     }
     srchlst.clear();
 

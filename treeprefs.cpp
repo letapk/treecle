@@ -26,6 +26,8 @@ void MainWindow::writeprefs()
     settings.setValue("treewidth", tree->width());
 
     settings.setValue("edwidth", leafview->width());
+
+    settings.setValue("openpath", Openpath);
 }
 
 void MainWindow::readprefs()
@@ -44,6 +46,11 @@ QList<int> integerList;
 
     s = settings.value("edwidth", QString("630")).toString();
     integerList.append(s.toInt());
+
+    //remember the folder the file dialogs started in last time
+    s = settings.value("openpath", QString()).toString();
+    if (!s.isEmpty() && QDir(s).exists())
+        Openpath = s;
 
     resize(size);
     move(pos);

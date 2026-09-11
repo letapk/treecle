@@ -11,27 +11,23 @@
  *
  */
 
-//Last modified 9 Sept 2026
+//Last modified Sept 11, 2026
 
 #include "treecle.h"
 
-#include <cstdlib>
-
 #include <QLockFile>
 
-QString userpath;
-
-void check_qtdata_dir ();
-bool acquire_lock(QLockFile *lock);
-
+#if !defined(TREECLE_TEST_BUILD)
 int main(int argc, char *argv[])
 //start user-interface
 {
 bool ok = false;
 QString lockfilename;
+QString dataDir;
 
     Q_INIT_RESOURCE(treecle);
     QApplication app(argc, argv);
+    app.setApplicationName("treecle");
 
     QTranslator appTranslator;
     ok = appTranslator.load("treecle_" + QLocale::system().name(), qApp->applicationDirPath());
@@ -43,17 +39,28 @@ QString lockfilename;
     if (ok == true)
         app.installTranslator(&qtTranslator);
 
-    //get the path to the user's home directory
-    userpath.clear();
-    const char *home = getenv ("HOME");
-    if (home == nullptr) {
-        QMessageBox::critical (nullptr, "Treecle", "Environment variable HOME is not set.\nCannot determine the user data directory.");
+    //path to the user data directory (Linux: ~/.local/share/treecle)
+    dataDir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+    if (dataDir.isEmpty()) {
+        QMessageBox::critical (nullptr, "Treecle", "Cannot determine the user data directory.");
         return 1;
     }
-    userpath.append (home);
-    userpath.append("/.treecle");//home/{account-name}/.treecle
 
-    lockfilename.append(userpath);
+    //move any existing files over from the legacy ~/.treecle data directory
+    //(images, treeclehelp.pdf, COPYING); the new directory is created here
+    QString oldpath = QStandardPaths::writableLocation(QStandardPaths::HomeLocation);
+    oldpath.append("/.treecle");
+    if (migrate_old_data_dir(oldpath, dataDir)) {
+        QMessageBox::information (nullptr, "Treecle",
+            "Your data files were moved from\n" + oldpath + "\n\nto\n" + dataDir +
+            "\nto comply with the standard data directory layout.");
+    }
+
+    //create the data directory if it is still missing (a fresh install), so
+    //that the lock file and help/license files have a place to live
+    QDir().mkpath(dataDir);
+
+    lockfilename.append(dataDir);
     lockfilename.append("/treelockfile.lck");
 
     QLockFile lockfile(lockfilename);
@@ -61,17 +68,18 @@ QString lockfilename;
     if (ok == false)//another instance holds the lock, exit
         return 0;
 
-    //check for the tdj data directory and create it if required
-    check_qtdata_dir();
+    //check for the data directory and create it if required
+    check_and_make_data_dir(dataDir);
 
-    MainWindow mainwindow;
+    MainWindow mainwindow(nullptr, dataDir);
     mainwindow.setWindowTitle(QObject::tr("Treecle"));
     mainwindow.show();
 
     return app.exec();
 }
+#endif//TREECLE_TEST_BUILD excludes main() so the tests can link this file
 
-MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
+MainWindow::MainWindow(QWidget *parent, const QString &dataDir) : QMainWindow(parent)
 //set up the user-interface
 {
     //initial window size
@@ -89,27 +97,30 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
     tree = new QTreeWidget ();
     tree->setColumnCount(1);
     tree->setHorizontalScrollBarPolicy(Qt::ScrollBarAsNeeded);
-    connect (tree, SIGNAL(itemClicked(QTreeWidgetItem*,int)), this, SLOT(set_branch(QTreeWidgetItem*)));
-    //connect (tree, SIGNAL(itemActivated(QTreeWidgetItem*,int)), this, SLOT(set_branch(QTreeWidgetItem*)));
-    connect (tree, SIGNAL(itemSelectionChanged()), this, SLOT(get_highlighted_branch()));
-    connect (tree, SIGNAL(itemChanged(QTreeWidgetItem*,int)), this, SLOT (set_modified_flag()));
+    connect (tree, &QTreeWidget::itemClicked, this, &MainWindow::set_branch);
+    //connect (tree, &QTreeWidget::itemActivated, this, &MainWindow::set_branch);
+    connect (tree, &QTreeWidget::itemSelectionChanged, this, &MainWindow::get_highlighted_branch);
+    connect (tree, &QTreeWidget::itemChanged, this, &MainWindow::set_modified_flag);
     tree->setHeaderLabel(tr("Filename"));
 
     panelshortcut = new QShortcut (this);
     panelshortcut->setKey (Qt::CTRL | Qt::Key_Tab);
-    connect (panelshortcut, SIGNAL(activated()), this, SLOT (set_panel_focus()));
+    connect (panelshortcut, &QShortcut::activated, this, &MainWindow::set_panel_focus);
 
     //HTML editor on right
     leafview = new QTextEdit (this);
     leafdoc = new QTextDocument(leafview);
-    connect (leafdoc, SIGNAL(contentsChanged()), this, SLOT(get_data_from_leaf()));
+    connect (leafdoc, &QTextDocument::contentsChanged, this, &MainWindow::get_data_from_leaf);
 
     splitter->addWidget(tree);
     splitter->addWidget(leafview);
     setCentralWidget(splitter);
+    //re-fit images when the editor panel is resized (follows the window width)
+    leafview->installEventFilter(this);
 
     //status bar on the bottom
     statustext = new QLabel (this);
+    statustext->setObjectName("statustext");
     statustext->setText(tr("Status messages appear here"));
     statustext->setFrameStyle(QFrame::Plain);
     statustext->setAlignment(Qt::AlignBottom);
@@ -117,17 +128,17 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     catflag = 1;
 
-    //set the Homepath
-    Homepath.append(userpath);
-    //set the working directory to the data subdirectory
-    QDir::setCurrent(Homepath);
+    //the data directory (images, help PDF, COPYING)
+    DataDir.append(dataDir);
+    //relative image links (bare filenames) resolve against this directory
+    leafdoc->setBaseUrl (QUrl::fromLocalFile(DataDir + "/"));
 
     //help file to read
-    Helpfilename.append (userpath);
+    Helpfilename.append (dataDir);
     Helpfilename.append ("/treeclehelp.pdf");
 
     //"COPYING" file to read
-    Gnugplfilename.append (userpath);
+    Gnugplfilename.append (dataDir);
     Gnugplfilename.append ("/COPYING");
 
     //Currentfile name
@@ -138,6 +149,20 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent)
 
     //read the user's preferences
     readprefs();
+
+    //the open/save dialogs start in the last used folder; on first run fall
+    //back to the current working dir, then Documents, then home, then the data
+    //dir (which is guaranteed to exist)
+    if (Openpath.isEmpty()) {
+        Openpath = QDir::currentPath();
+        if (Openpath.isEmpty() || QDir(Openpath).exists() == false) {
+            Openpath = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+            if (Openpath.isEmpty() || QDir(Openpath).exists() == false)
+                Openpath = QDir::homePath();
+            if (Openpath.isEmpty() || QDir(Openpath).exists() == false)
+                Openpath = DataDir;
+        }
+    }
 
     //this->setFocus();
 }

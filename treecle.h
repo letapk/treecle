@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified 9 Sept 2026
+//Last modified Sept 11, 2026
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -41,6 +41,8 @@
 #include <QMouseEvent>
 #include <QLineEdit>
 #include <QSettings>
+#include <QDir>
+#include <QStandardPaths>
 #include <QTranslator>
 #include <QDesktopServices>
 #include <QUrl>
@@ -48,6 +50,26 @@
 #include <QFontDatabase>
 #include <QShortcut>
 #include "QtSpell.hpp"
+
+//free helper functions
+class QLockFile;
+void check_and_make_data_dir (const QString &dataDir);
+bool acquire_lock(QLockFile *lock);
+//copy the contents of the legacy ~/.treecle data dir into the standard one
+//(returns true if anything was actually moved/copied)
+bool migrate_old_data_dir (const QString &oldDir, const QString &newDir);
+//rewrite absolute <img src> paths that live under a known data dir to bare
+//filenames, so saved files stay portable (resolved against DataDir on show)
+QString normalize_img_links (const QString &html, const QString &legacyDir, const QString &dataDir);
+//shrink oversized data-dir images so their width fits the editor; adds
+//width/height attributes to the html (aspect ratio preserved)
+QString fit_images_to_width (const QString &html, const QString &dataDir, int maxWidth);
+//remove width/height attributes from <img> tags, so saved branch text keeps
+//only portable bare-filename links (display sizes are always recomputed)
+QString strip_image_sizes (const QString &html);
+
+//result of parsing the tree-file header (magic line + format version)
+enum class TrcHeaderStatus { Ok, Corrupt, NewerVersion };
 
 class MainWindow : public QMainWindow
 {
@@ -85,8 +107,11 @@ class MainWindow : public QMainWindow
 
     QString Gnugplfilename;
     QString Helpfilename;
-    //stores the path to the data subdirectory
-    QString Homepath;
+    //path to the user data directory (images, help PDF, COPYING)
+    QString DataDir;
+    //directory the open/save dialogs start in (last used folder; on first run
+    //falls back to cwd, Documents, home, then the data dir)
+    QString Openpath;
     QString Currentfile;
     QtSpell::TextEditChecker checker;
 
@@ -95,7 +120,7 @@ class MainWindow : public QMainWindow
     bool file_read_in_progress = false, file_modified = false, branch_display_in_progress = false;
 
 public:
-    MainWindow(QWidget *parent = nullptr);
+    MainWindow(QWidget *parent = nullptr, const QString &dataDir = QString());
     ~MainWindow();
 
 public slots:
@@ -103,9 +128,20 @@ public slots:
 
     //file menu
     void open_file ();
-    int new_file();
-    int save_file();
-    int save_file_as ();
+    void new_file();
+    bool save_file();
+    bool save_file_as ();
+
+    //persistence primitives (pure file format, testable without dialogs)
+    bool write_tree(QTreeWidget *tree, QTextStream *out);
+    TrcHeaderStatus read_tree_header(QTextStream *in, int &catcount);
+    bool read_tree(QTextStream *in, int catcount, QList<QTreeWidgetItem *> &tops);
+
+    //modification flag access (document_modified)
+    bool isModified() const { return file_modified; }
+    void setModified(bool m) { file_modified = m; }
+    //directory the open/save dialogs start in (persistence primitives)
+    QString openDir() const { return Openpath; }
     void quit();
 
     //help menu
@@ -130,7 +166,7 @@ public slots:
     void set_branch (QTreeWidgetItem *b);
     void get_data_from_leaf();
     void save_this_branch (QTreeWidgetItem *cat, QTextStream *out);
-    void read_this_branch (QTreeWidgetItem *cat, QTextStream *in);
+    bool read_this_branch (QTreeWidgetItem *cat, QTextStream *in);
 
     void delete_tree();
 
@@ -156,9 +192,14 @@ public slots:
 
     //virtual slots
     void closeEvent(QCloseEvent *event);
+    //re-fit on-screen images when the editor panel is resized
+    bool eventFilter(QObject *obj, QEvent *ev);
 
     //load data in editor
     void show_branch_data ();
+    //rescale on-screen images so their width fits the editor (display only;
+    //rerun when the editor is resized so images follow the panel width)
+    void fit_editor_images (int maxWidth);
 
     //preferences
     void writeprefs();
