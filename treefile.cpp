@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 10, 2026
+//Last modified Sept 14, 2026
 
 #include "treecle.h"
 
@@ -32,7 +32,7 @@ void MainWindow::new_file()
 {
 QString s;
 
-    if (file_modified == true) {
+    if (document_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
@@ -50,7 +50,8 @@ QString s;
                 tree->setHeaderLabel("Filename");
                 Currentfile.clear();
                 Currentfile.append("Noname.trc");
-                file_modified = false;
+                release_file_lock();
+                document_modified = false;
             }
             else {//user cancelled the save operation using the cancel button in the file dialog
                 statustext->setText(tr("Tree has not been saved"));
@@ -61,7 +62,7 @@ QString s;
             delete_tree();
             tree->setHeaderLabel("Filename");
             statustext->setText(tr("Tree discarded"));
-            file_modified = false;
+            document_modified = false;
             return;
         }
     }
@@ -71,7 +72,8 @@ QString s;
         statustext->setText(tr("New file"));
         Currentfile.clear();
         Currentfile.append("Noname.trc");
-        file_modified = false;
+        release_file_lock();
+        document_modified = false;
     }
 }
 
@@ -88,7 +90,7 @@ bool ok;
         return;
 
     //2. if the current tree has unsaved changes, save or discard it
-    if (file_modified == true) {
+    if (document_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"),
                                    tr("The current tree has not been saved.\nSave it before opening a file?"),
@@ -150,16 +152,33 @@ bool ok;
     for (QTreeWidgetItem *t : tops)
         fixImgs(t);
 
-    //4. the file loaded completely: only now replace the current tree
+    //4. take the per-file lock: refuse to open the same file in two live
+    //instances (Cancel-only; stale locks are removed automatically). If the
+    //file differs from the one currently open, release its lock first so the
+    //acquired lock always matches Currentfile
+    if (QFileInfo(fn).canonicalFilePath() != QFileInfo(Currentfile).canonicalFilePath()) {
+        release_file_lock();
+        if (acquire_file_lock(fn) == false) {
+            statustext->setText(tr("The file is already open in another instance"));
+            if (Currentfile != "Noname.trc")//re-lock the file still in use
+                acquire_file_lock(Currentfile);
+            return;//the current tree is left untouched
+        }
+    }
+
+    //5. the file loaded completely: only now replace the current tree
     delete_tree();
     for (QTreeWidgetItem *t : tops)
         tree->addTopLevelItem(t);
 
     file_read_in_progress = false;
     Currentfile = fn;
-    file_modified = false;
+    document_modified = false;
     Openpath = fi.path();//remember this folder for the next dialog
     tree->setHeaderLabel(fi.fileName());
+    //restore the images this document has made copies of, so a removal in a
+    //later session can still be cleaned up
+    loadOwnedImages(fn);
 
     cat = tree->topLevelItem(0);
     if (cat == nullptr)
@@ -170,6 +189,25 @@ bool ok;
         statustext->setText(s);
     }
     tree->setFocus();
+}
+
+//read exactly `units` UTF-16 code units into *out. QTextStream::read() counts
+//Unicode characters, but branch lengths are written with QString::length()
+//(UTF-16 units); without this, astral-plane characters (surrogate pairs, e.g.
+//emoji) would under-consume and corrupt the stream. Reading in a loop and
+//redeeming the actually-consumed units keeps both sides consistent. A short
+//file (fewer characters than promised) is rejected.
+static bool read_n_units(QTextStream *in, qint64 units, QString *out)
+{
+    out->clear();
+    while (units > 0) {
+        QString chunk = in->read(units);
+        if (in->status() != QTextStream::Ok || chunk.isEmpty())
+            return false;
+        out->append(chunk);
+        units -= (qint64)chunk.length();
+    }
+    return true;
 }
 
 bool MainWindow::read_this_branch (QTreeWidgetItem *cat, QTextStream *in)
@@ -188,8 +226,8 @@ int j = 0, childnum = 0;
     i = (qint64)j;
 
     //read the name of this branch
-    s.clear();
-    s = in->read(i);
+    if (read_n_units(in, i, &s) == false)
+        return false;
     cat->setText(0, s);
 
     //length of branch data
@@ -201,8 +239,8 @@ int j = 0, childnum = 0;
     i = (qint64)j;
 
     //read the data in this branch
-    s.clear();
-    s = in->read(i);
+    if (read_n_units(in, i, &s) == false)
+        return false;
     cat->setText(1, s);
 
     //read the no. of children in this branch
@@ -290,7 +328,7 @@ bool MainWindow::save_file()
 QString s;
 bool ok;
 
-    if (tree->topLevelItemCount() == 0 || file_modified == false) {
+    if (tree->topLevelItemCount() == 0 || document_modified == false) {
         statustext->setText(tr("Nothing to save"));
         return false;
     }
@@ -298,6 +336,10 @@ bool ok;
     if (Currentfile == "Noname.trc") {
         return save_file_as();
     }
+
+    //preserve the version about to be replaced: the .bak always holds the
+    //immediately-previous save, so a later bad save is never fatal
+    make_backup_copy(Currentfile);
 
     QSaveFile file (Currentfile);
     QFileInfo fi(Currentfile);
@@ -327,14 +369,20 @@ bool ok;
     s.append (tr("Saved "));
     s.append (Currentfile);
     statustext->setText(s);
-    file_modified = false;
+    document_modified = false;
+    gcOrphanedImages();
     return true;
 }
 
 bool MainWindow::save_file_as()
 {
 QString s;
+QString prevFile;
 bool ok;
+
+    //remember the file the ownership sidecar currently belongs to, so a Save
+    //As to a different path can drop the now-stale sidecar (its key changes)
+    prevFile = Currentfile;
 
     QString fn = QFileDialog::getSaveFileName(this, tr("Save File..."), QString(Openpath), tr("Treecle files (*.trc);;All files (*)"));
     if (fn.isEmpty())
@@ -344,11 +392,34 @@ bool ok;
         fn.append(".trc");
     fi = QFileInfo(fn);
 
+    //if the target file differs from the one currently open, switch the
+    //per-file lock to it BEFORE writing (refusing to overwrite a file that
+    //another live instance holds is the point of the lock); a failed write
+    //restores the lock of the file still open
+    if (QFileInfo(fn).canonicalFilePath() != QFileInfo(Currentfile).canonicalFilePath()) {
+        release_file_lock();
+        if (acquire_file_lock(fn) == false) {
+            statustext->setText(tr("That file is already open in another instance - nothing was saved"));
+            if (Currentfile != "Noname.trc")//re-lock the file still in use
+                acquire_file_lock(Currentfile);
+            return false;
+        }
+    }
+
+    //when we overwrite an existing file, keep its current version as .bak
+    //(a Save As to a brand-new path simply has nothing to back up)
+    make_backup_copy(fn);
+
     QSaveFile file (fn);
 
     ok = file.open(QFile::WriteOnly);
     if (ok == false) {
         statustext->setText(tr("Could not open the file for writing: ") + fn);
+        if (QFileInfo(fn).canonicalFilePath() != QFileInfo(Currentfile).canonicalFilePath()) {
+            release_file_lock();
+            if (Currentfile != "Noname.trc")//re-lock the file still in use
+                acquire_file_lock(Currentfile);
+        }
         return false;
     }
 
@@ -359,10 +430,20 @@ bool ok;
     if (write_tree(tree, &out) == false || file.error() != QFileDevice::NoError) {
         file.cancelWriting();
         statustext->setText(tr("Failed to write the file: ") + fn);
+        if (QFileInfo(fn).canonicalFilePath() != QFileInfo(Currentfile).canonicalFilePath()) {
+            release_file_lock();
+            if (Currentfile != "Noname.trc")//re-lock the file still in use
+                acquire_file_lock(Currentfile);
+        }
         return false;
     }
     if (file.commit() == false) {
         statustext->setText(tr("Could not save the file: ") + fn);
+        if (QFileInfo(fn).canonicalFilePath() != QFileInfo(Currentfile).canonicalFilePath()) {
+            release_file_lock();
+            if (Currentfile != "Noname.trc")//re-lock the file still in use
+                acquire_file_lock(Currentfile);
+        }
         return false;
     }
 
@@ -372,8 +453,14 @@ bool ok;
     s.append (fn);
     statustext->setText(s);
     Currentfile = fn;
-    file_modified = false;
+    document_modified = false;
     Openpath = fi.path();//remember this folder for the next dialog
+    gcOrphanedImages();
+    //the sidecar follows the new file key; drop the stale one if the previous
+    //document was a real file that now lives under a different canonical path
+    if (prevFile != "Noname.trc" &&
+        QFileInfo(prevFile).canonicalFilePath() != QFileInfo(fn).canonicalFilePath())
+        QFile::remove(image_own_name(DataDir, prevFile));
 
     return true;
 }
@@ -458,6 +545,10 @@ void MainWindow::delete_tree ()
     cur_leaf = nullptr;
     catflag = 1;
     leafdoc->setHtml("<p></p>");
+    //the old document is gone, so its image copies are no longer owned by the
+    //current document and must never be deleted by a later save (the sidecar
+    //the document itself got is restored by loadOwnedImages() after any switch)
+    ownedImages.clear();
     //status text here
     statustext->setText(tr("File modified"));
 }

@@ -1,4 +1,4 @@
-Treecle 1.1.6
+Treecle 1.2
 -------------
 Treecle creates and manages user-defined, custom-built trees.
 
@@ -8,6 +8,26 @@ Seriously, Treecle can be used to create a heirarchy of your own design,
 representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
+
+Changes in version 1.2
+----------------------
+1. The program saves file specific lockfiles, images and other data in ~/.local/share/treecle.
+When running this version for the first time, all data in the old data folder
+(~/.treecle) will be copied to the new location. The program retains the old data folder,
+so if you wish to delete it, this will need to be done manually.
+2. Images added to the tree are now displayed resized to the width of the editor window,
+(if they are larger). The image width resizes with the width of the editor window.
+3. There can be multiple instances of the program, but opening and editing the same file by
+different instances are caught and not permitted.
+4. Code related to file saving has been modified amd the program now creates a backup
+file on saving.
+5. The data file format has been tweaked to keep track of images linked to a file, and
+to keep backward compatibility with version 1.1.
+6. Search related code has been modified.
+7. Removing an image from a file also deletes it from the treecle data directory.
+
+
+These changes seem to be significant enough for moving from the 1.1 versioning series to 1.2.
 
 Changes in version 1.1.6
 ------------------------
@@ -93,13 +113,13 @@ available from within QtCreator. From this location copy the binary to a place w
 is included in the system's path. For example, in a terminal window give the command:
 
 >sudo cp ./treecle /usr/local/bin/treecle
-Enter the password when prompted.
+Enter the root password when prompted.
 
 This copies the binary to /usr/local/bin. if you need the German language translation, then do:
 sudo cp ./treecle_de.qm /usr/local/bin/treecle_de.qm
 
 When executing the program for the first time in any user's account, a message notifying the creation of
-a hidden subdirectory named ".treecle" will appear. In order to view the online help, the presence
+a subdirectory named "~/.local/share/treecle" will appear. In order to view the online help, the presence
 of the help file (treeclehelp.pdf) in this location is required.
 
 The file COPYING, which displays information about the program and the license is also required to be
@@ -120,8 +140,7 @@ Ave, Cambridge, MA 02139, USA.
 
 The QtSpell files in this software are being used in compliance with the
 license under which they have been made available. Many thanks to the
-author Sandro Mani for the package.
-manisandro@gmail.com
+author Sandro Mani for the package, whose Github repo is at:
 https://github.com/manisandro/qtspell
 
 What else?

@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 11, 2026
+//Last modified Sept 12, 2026
 
 #include "treecle.h"
 
@@ -19,7 +19,7 @@
 
 void collapse (QTreeWidgetItem *t);
 void expand (QTreeWidgetItem *t);
-void srch_sub(QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &srchlst);
+void srch_sub(QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &results);
 QTreeWidgetItem *srch_cat (QTreeWidgetItem *t, QString s);
 
 void MainWindow::tree_addbranch()
@@ -45,7 +45,7 @@ QString s;
 
     show_branch_data ();
 
-    file_modified = true;
+    document_modified = true;
     //status text here
     statustext->setText(tr("Added a new category. File modified"));
 }
@@ -80,7 +80,7 @@ QTreeWidgetItem *b;
     tree->setCurrentItem(b);
 
     show_branch_data ();
-    file_modified = true;
+    document_modified = true;
     statustext->setText(tr("Added a new branch. File modified"));
 }
 
@@ -146,7 +146,7 @@ QTreeWidgetItem *b, *deleted;
         leafdoc->setHtml("<p></p>");
     }
     catflag = 1;
-    file_modified = true;
+    document_modified = true;
 }
 
 void MainWindow::tree_cutbranch()
@@ -158,7 +158,7 @@ void MainWindow::tree_cutbranch()
 
     tree_copybranch();
     tree_delbranch_after_copy();
-    file_modified = true;
+    document_modified = true;
     //status text here
     statustext->setText(tr("File modified"));
 }
@@ -211,7 +211,7 @@ QTreeWidgetItem *deleted;
         statustext->setText(tr("The tree is empty"));
         leafdoc->setHtml("<p></p>");
     }
-    file_modified = true;
+    document_modified = true;
     catflag = 1;
 }
 
@@ -443,7 +443,7 @@ int tlc;
     }
 
     tree->sortItems(0, Qt::AscendingOrder);
-    file_modified = true;//the saved order of the tree has changed
+    document_modified = true;//the saved order of the tree has changed
 }
 
 void MainWindow::sort_desc_tree()
@@ -457,7 +457,7 @@ int tlc;
     }
 
     tree->sortItems(0, Qt::DescendingOrder);
-    file_modified = true;//the saved order of the tree has changed
+    document_modified = true;//the saved order of the tree has changed
 }
 
 void MainWindow::tree_srch_nxt()
@@ -477,36 +477,36 @@ int i, sz;
         statustext->setText(tr("Please enter text in search box"));
         return;
     }
-    if (s != last_search_text) {
-        srch_idx = 0;
-        last_search_text = s;
+    if (s != search.lastText) {
+        search.index = 0;
+        search.lastText = s;
     }
 
-    for (QTreeWidgetItem *occ : std::as_const(srchlst)) {
+    for (QTreeWidgetItem *occ : std::as_const(search.results)) {
         occ->setSelected(false);
     }
-    srchlst.clear();
+    search.results.clear();
 
     //loop over categories
     for (i = 0; i < catcount; i++){
         //next top level category
         cat = tree->topLevelItem(i);
-        srch_sub (cat, s, srchlst);
+        srch_sub (cat, s, search.results);
     }
 
-    sz = srchlst.size();
+    sz = search.results.size();
     if (sz > 0) {
-        if (srch_idx >= sz)
-            srch_idx = 0;
-        set_branch(srchlst[srch_idx]);
-        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(srch_idx+1).arg(sz);
+        if (search.index >= sz)
+            search.index = 0;
+        set_branch(search.results[search.index]);
+        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(search.index+1).arg(sz);
         statustext->setText(s1);
     }
     else
         statustext->setText("Text not found");
-    srch_idx++;
-    if (srch_idx >= sz)
-        srch_idx = 0;
+    search.index++;
+    if (search.index >= sz)
+        search.index = 0;
 }
 
 void MainWindow::tree_srch_pre()
@@ -526,38 +526,37 @@ int i, sz;
         statustext->setText(tr("Please enter text in search box"));
         return;
     }
-    if (s != last_search_text) {
-        srch_idx = 0;
-        last_search_text = s;
+    if (s != search.lastText) {
+        search.index = 0;
+        search.lastText = s;
     }
 
-    for (QTreeWidgetItem *occ : std::as_const(srchlst)) {
+    for (QTreeWidgetItem *occ : std::as_const(search.results)) {
         occ->setSelected(false);
     }
-    srchlst.clear();
+    search.results.clear();
 
     //loop over categories
     for (i = 0; i < catcount; i++){
         //next top level category
         cat = tree->topLevelItem(i);
-        srch_sub (cat, s, srchlst);
+        srch_sub (cat, s, search.results);
     }
 
-    sz = srchlst.size();
+    sz = search.results.size();
     if (sz > 0) {
-        set_branch(srchlst[sz - srch_idx - 1]);
-        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(sz - srch_idx).arg(sz);
+        set_branch(search.results[sz - search.index - 1]);
+        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(sz - search.index).arg(sz);
         statustext->setText(s1);
     }
     else
         statustext->setText(tr("Text not found"));
-    //printf ("size=%i, idx=%i\n", sz, srch_idx);
-    srch_idx++;
-    if (srch_idx >= sz)
-        srch_idx = 0;
+    search.index++;
+    if (search.index >= sz)
+        search.index = 0;
 }
 
-void srch_sub (QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &srchlst)
+void srch_sub (QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &results)
 {
 QString s1;
 int i, childcount;
@@ -566,13 +565,13 @@ int i, childcount;
     t->setSelected(false);
     //check current branch
     if (s1.contains(s, Qt::CaseInsensitive) == true) {
-        srchlst.append(t);
+        results.append(t);
     }
     //go down the sub-branches
     childcount = t->childCount();
     if (childcount > 0) {
         for (i = 0; i < childcount; i++) {
-            srch_sub (t->child(i), s, srchlst);
+            srch_sub (t->child(i), s, results);
         }
     }
 }

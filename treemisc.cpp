@@ -11,11 +11,14 @@
  *
  */
 
-//Last modified Sept 11, 2026
+//Last modified Sept 14, 2026
 
 #include "treecle.h"
 
 #include <QLockFile>
+#include <QCryptographicHash>
+#include <QSaveFile>
+#include <QFileInfo>
 #include <QEvent>
 #include <QRegularExpression>
 #include <QImage>
@@ -400,6 +403,100 @@ QTextCharFormat fmt;
     mergeFormatOnWordOrSelection(fmt);
 }
 
+QString unique_data_dir_name (const QString &dataDir, const QString &fileName)
+{
+QFileInfo fi(fileName);
+QString target, base;
+int n = 1;
+
+    target = dataDir + "/" + fileName;
+    base = fi.completeBaseName();
+    while (QFile::exists(target)) {
+        target = dataDir + "/" + base + "_" + QString::number(n);
+        if (fi.suffix().isEmpty() == false) {
+            target.append(".");
+            target.append(fi.suffix());
+        }
+        n++;
+    }
+    return target;
+}
+
+//walk the whole tree, collecting the bare data-dir image filenames referenced
+//by <img src> tags in every branch's text; paths containing '/' or '://' are
+//external/absolute and never cleanup candidates
+QSet<QString> collect_image_refs (const QTreeWidget &tree)
+{
+QRegularExpression re("<img\\s[^>]*?src=\"([^\"]*)\"[^>]*>");
+QRegularExpressionMatchIterator it;
+QRegularExpressionMatch m;
+QList<QTreeWidgetItem *> stack;
+QSet<QString> refs;
+
+    for (int i = 0; i < tree.topLevelItemCount(); i++)
+        stack.append(tree.topLevelItem(i));
+    while (stack.isEmpty() == false) {
+        QTreeWidgetItem *item = stack.takeLast();
+        it = re.globalMatch(item->text(1));
+        while (it.hasNext()) {
+            m = it.next();
+            QString src = m.captured(1);
+            if (src.indexOf('/') == -1 && src.indexOf("://") == -1)
+                refs.insert(src);
+        }
+        for (int c = 0; c < item->childCount(); c++)
+            stack.append(item->child(c));
+    }
+    return refs;
+}
+
+//only writer of ownedImages alongside the (modal) insertImage(); kept separate
+//so the orphan cleanup is testable without dialogs
+void MainWindow::recordInsertedImage (const QString &basename)
+{
+    if (basename.isEmpty() == false)
+        ownedImages.insert(basename);
+}
+
+void MainWindow::loadOwnedImages (const QString &filepath)
+{
+    ownedImages = load_owned_images(image_own_name(DataDir, filepath));
+}
+
+void MainWindow::gcOrphanedImages (const QString &filepath)
+{
+QSet<QString> refs, keep;
+QString ownFile, path = filepath;
+
+    if (path.isEmpty())
+        path = Currentfile;
+    if (ownedImages.isEmpty()) {
+        //nothing to prune, but still drop a sidecar the document no longer owns
+        //anything through (e.g. the previous path of a Save As)
+        if (path != "Noname.trc")
+            write_owned_images(image_own_name(DataDir, path), QSet<QString>());
+        return;
+    }
+    refs = collect_image_refs(*tree);
+    for (const QString &name : ownedImages) {
+        //keep every still-referenced image; unreferenced ones are copies owned
+        //by this document (and only this one) - the document is done with them
+        if (refs.contains(name)) {
+            keep.insert(name);
+            continue;
+        }
+        if (QFile::remove(DataDir + "/" + name) == false) {
+            //transient failure: leave the entry so a later save can retry
+            keep.insert(name);
+            continue;
+        }
+    }
+    ownedImages = keep;
+    //persist the pruned set so ownership survives the next session (no sidecar
+    //is ever written for the unsaved "Noname.trc" placeholder)
+    if (path != "Noname.trc")
+        write_owned_images(image_own_name(DataDir, path), ownedImages);
+}
 
 void MainWindow::insertImage()
 {
@@ -423,44 +520,27 @@ QMessageBox msgBox;
         return;
 
     fi = QFileInfo(file);
-    if (fi.path() != DataDir) {
-        //copy the file to the data subdirectory; make the name unique so that two
-        //different source files with the same name cannot collide here
-        fname.clear();
-        fname.append(DataDir);
-        fname.append("/");
-        fname.append(fi.fileName());
-        int n = 1;
-        while (QFile::exists(fname)) {
-            fname.clear();
-            fname.append(DataDir);
-            fname.append("/");
-            fname.append(fi.completeBaseName());
-            fname.append("_");
-            fname.append(QString::number(n));
-            if (fi.suffix().isEmpty() == false) {
-                fname.append(".");
-                fname.append(fi.suffix());
-            }
-            n++;
-        }
-        if (QFile::copy(fi.filePath(), fname) == false) {
-            msgBox.setIcon(QMessageBox::Warning);
-            msgBox.setText(QObject::tr("Could not copy the image file to the Treecle data directory: ") + fname);
-            msgBox.setInformativeText(QObject::tr("The image was not inserted."));
-            msgBox.exec();
-            return;
-        }
-
-        s.append (QObject::tr("The image file has been copied to the Treecle data directory "));
-        s.append (DataDir);
-        s.append (QObject::tr("\nClick OK to continue"));
-        msgBox.setIcon(QMessageBox::Information);
-        msgBox.setText(s);
+    //always copy the image into the data dir, giving it a unique name if a
+    //file with that name is already there. Even an image already living in the
+    //data dir gets its own private numbered copy - two documents that insert
+    //the same picture therefore never share one physical file, so a file a
+    //document dropped is safe to delete again (gcOrphanedImages)
+    fname = unique_data_dir_name(DataDir, fi.fileName());
+    if (QFile::copy(fi.filePath(), fname) == false) {
+        msgBox.setIcon(QMessageBox::Warning);
+        msgBox.setText(QObject::tr("Could not copy the image file to the Treecle data directory: ") + fname);
+        msgBox.setInformativeText(QObject::tr("The image was not inserted."));
         msgBox.exec();
+        return;
     }
-    else
-        fname.append(fi.filePath());
+    recordInsertedImage(QFileInfo(fname).fileName());
+
+    s.append (QObject::tr("The image file has been copied to the Treecle data directory "));
+    s.append (DataDir);
+    s.append (QObject::tr("\nClick OK to continue"));
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setText(s);
+    msgBox.exec();
 
     if (tree->topLevelItemCount() == 0)
         return;
@@ -486,7 +566,7 @@ QTextEdit *editor;
 void MainWindow::closeEvent(QCloseEvent *event)
 {
 
-    if (file_modified == true) {
+    if (document_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
                                    QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
@@ -574,33 +654,31 @@ bool ok;
     gnugpl->show();
 }
 
-void check_and_make_data_dir (const QString &dataDir)
+bool check_and_make_data_dir (const QString &dataDir)
 {
 QString qtpath, s1;
 QDir qtdir;
 QMessageBox msgBox;
 
     qtpath.append (dataDir);
-qtdir = QDir (qtpath);
+    qtdir = QDir (qtpath);
 
-    if (qtdir.exists() == false) {
-        s1.append (QObject::tr("The treecle data directory does not exist. "));
-        s1.append (QObject::tr("This is required to store your work.\n"));
-        s1.append (QObject::tr("Click OK to create a new, subdirectory "));
-        s1.append (QObject::tr("in your area with the name : \n"));
-        s1.append (qtpath);
-        s1.append ("\n");
-        s1.append (QObject::tr("The help file treeclehelp.pdf should be copied\n"));
-        s1.append (QObject::tr("in this location for online help to be available.\n"));
-        s1.append (QObject::tr("The license file COPYING should also be copied\n"));
-        s1.append (QObject::tr("in this location for the program details to be available.\n"));
-        //s1.append (Lockfilename);
+    if (qtdir.exists() == true)//not the first run in this account
+        return true;
 
-        msgBox.setText(s1);
-        msgBox.exec();
+    //first run in this account: tell the user the data dir is being created;
+    //images, help, license and file locks are kept there
+    s1.append (QObject::tr("Treecle is running for the first time in this account.\n"));
+    s1.append (QObject::tr("The data directory\n\n"));
+    s1.append (qtpath);
+    s1.append (QObject::tr("\n\nis created for storing your images,\nthe help file (treeclehelp.pdf), the license (COPYING)\nand the temporary file locks.\n"));
+    s1.append (QObject::tr("You can safely ignore this message; it appears only once."));
 
-        qtdir.mkpath(qtpath);//mkdir for nested parents (e.g. ~/.local/share)
-    }
+    msgBox.setIcon(QMessageBox::Information);
+    msgBox.setText(s1);
+    msgBox.exec();
+
+    return qtdir.mkpath(qtpath);//mkdir for nested parents (e.g. ~/.local/share)
 }
 
 QString fit_images_to_width (const QString &html, const QString &dataDir, int maxWidth)
@@ -788,66 +866,133 @@ bool did_migrate = false;
     return did_migrate;
 }
 
-bool acquire_lock(QLockFile *lock)
+//canonical path when the file exists (resolves symlinks and ".."); a plain
+//absolute path otherwise (e.g. a Save As target not written yet)
+static QString file_path_key (const QString &filepath)
+{
+QFileInfo fi(filepath);
+QString key = fi.canonicalFilePath();
+
+    if (key.isEmpty())
+        key = fi.absoluteFilePath();
+    return QString::fromLatin1(QCryptographicHash::hash(key.toUtf8(), QCryptographicHash::Sha1).toHex());
+}
+
+QString file_lock_name (const QString &dataDir, const QString &filepath)
+{
+    return dataDir + "/" + file_path_key(filepath) + ".lck";
+}
+
+QString image_own_name (const QString &dataDir, const QString &filepath)
+{
+    //same key as the lock file, so a document's ownership travels exactly as
+    //far as its lock would (moving/renaming the .trc orphans it, nothing more)
+    return dataDir + "/" + file_path_key(filepath) + ".own";
+}
+
+QSet<QString> load_owned_images (const QString &ownFile)
+{
+QSet<QString> owned;
+QFile in(ownFile);
+QString line;
+
+    if (in.open(QIODevice::ReadOnly | QIODevice::Text) == false)
+        return owned;//missing or unreadable sidecar: nothing is owned
+    while (in.atEnd() == false) {
+        line = in.readLine().trimmed();
+        if (line.isEmpty() == false)
+            owned.insert(line);
+    }
+    return owned;
+}
+
+bool write_owned_images (const QString &ownFile, const QSet<QString> &owned)
+{
+    //an empty owned set means the document owns nothing: drop the sidecar
+    if (owned.isEmpty())
+        return (QFile::exists(ownFile) == false) || QFile::remove(ownFile);
+
+    QSaveFile out(ownFile);
+    if (out.open(QIODevice::WriteOnly) == false)
+        return false;
+    QStringList names = owned.values();
+    names.sort();//stable sidecar content regardless of set order
+    QTextStream ts(&out);
+    ts.setEncoding(QStringConverter::Utf8);
+    for (const QString &name : names)
+        ts << name << "\n";
+    return out.commit();
+}
+
+bool make_backup_copy (const QString &filepath)
+{
+QFileInfo fi(filepath);
+
+    //nothing to back up when the file has never been saved to this path
+    if (fi.exists() == false || fi.isFile() == false)
+        return false;
+    //the old .bak is replaced so it always holds the immediately-previous
+    //version (one rolling backup per file, not an ever-growing pile)
+    QFile::remove(filepath + ".bak");
+    return QFile::copy(filepath, filepath + ".bak");
+}
+
+bool MainWindow::acquire_file_lock (const QString &filepath)
 {
 QMessageBox msgBox;
 QString s1, s2, s3;
 qint64 pid = -1;
 QString host, app;
+QLockFile *lock;
 bool ok = false;
 
-    ok = lock->tryLock();
-    if (ok == true)//lock acquired, single instance, continue
+    if (filelock != nullptr)//we already hold the lock for the current file
         return true;
+
+    lock = new QLockFile(file_lock_name(DataDir, filepath));
+    ok = lock->tryLock();
+    if (ok == true) {
+        filelock = lock;
+        return true;
+    }
 
     //the lock file already exists - a stale lock is removed automatically by
     //tryLock(), so a persistent lock means another live instance holds it
     lock->getLockInfo(&pid, &host, &app);
 
-    s1 = QObject::tr("It seems that \"Treecle\" is already running.");
+    s1 = QObject::tr("This file is already open by another instance of Treecle.");
+    s2 = QObject::tr("Close it there, then open it here. The file was not opened.");
 
     if (pid > 0) {//the lock file holds the identity of the other instance
-        s2 = QObject::tr("Click \"Continue\" to start another instance,\nelse click \"Abort\". ");
         s3 = QObject::tr("The other instance has the process ID ");
         s3.append (QString::number(pid));
         s3.append (QObject::tr(" and runs on the host \""));
         s3.append (host);
         s3.append (QObject::tr("\". "));
-        s3.append (QObject::tr("If Treecle is not running, its lock is stale and \"Continue\" removes it. "));
-        s3.append (QObject::tr("See the user manual about the risks of running two instances of the program at the same time.\n"));
+        s3.append (QObject::tr("If Treecle is not running, its lock is stale and it will be removed automatically. "));
     }
     else {//the lock file could not be read
-        s2 = QObject::tr("If this is not the case, click \"Continue\", else click \"Abort\". ");
-        s3 = QObject::tr("A lockfile has been found in the hidden treecle data-subdirectory. ");
-        s3.append (QObject::tr("The program may be currently running in another window, in which case click \"Abort\". "));
-        s3.append (QObject::tr("If you are sure that treecle is not running in this account, click \"Continue\" to remove it. "));
-        s3.append (QObject::tr("See the user manual about the risks of running two instances of the program at the same time.\n"));
+        s3 = QObject::tr("The lock file for this file could not be read from the hidden treecle data-subdirectory. ");
+        s3.append (QObject::tr("If this instance is not running elsewhere, this is a stale lock. "));
     }
 
+    msgBox.setIcon(QMessageBox::Warning);
     msgBox.setText(s1);
     msgBox.setInformativeText(s2);
     msgBox.setDetailedText(s3);
-
-    msgBox.addButton(QObject::tr("Continue"), QMessageBox::AcceptRole);
-    msgBox.addButton(QObject::tr("Abort"), QMessageBox::RejectRole);
-
     msgBox.exec();
-    QAbstractButton *btn = msgBox.clickedButton();
 
-    if (btn == nullptr || msgBox.buttonRole(btn) != QMessageBox::AcceptRole)//abort or dialog closed
-        return false;
+    delete lock;//unlock() would also remove the file; here it is foreign, leave it
+    return false;
+}
 
-    //Continue: the lock may be stale (its owner process is gone). Remove it and retry.
-    lock->removeStaleLockFile();
-    ok = lock->tryLock();
-    if (ok == true)//lock acquired after removing the stale lock
-        return true;
-
-    //a live instance really holds the lock - run without a lock anyway
-    QMessageBox::warning(nullptr, "Treecle",
-        QObject::tr("Treecle is still running in another window.\n"
-                    "Starting a second instance without a lock;\nsaving the same tree from both windows may lose data."));
-    return true;
+void MainWindow::release_file_lock()
+{
+    if (filelock != nullptr) {
+        filelock->unlock();//removes the lock file
+        delete filelock;
+        filelock = nullptr;
+    }
 }
 
 void MainWindow::set_panel_focus()
@@ -884,5 +1029,5 @@ QTreeWidgetItem *it;
 void MainWindow::set_modified_flag()
 {
     if (file_read_in_progress == false && branch_display_in_progress == false)
-        file_modified = true;
+        document_modified = true;
 }

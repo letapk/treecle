@@ -18,13 +18,15 @@ TARGET = treecle
 TEMPLATE = app
 
 SOURCES += \
-    treemisc.cpp \
     treemain.cpp \
+    treemisc.cpp \
     treefile.cpp \
     treetree.cpp \
     treeprefs.cpp
 
 HEADERS  += \
+    QtSpell.hpp \
+    QtSpellExport.hpp \
     treecle.h
 
 #Put libqtspell-qt6.so in /usr/lib or /usr/lib64

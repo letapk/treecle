@@ -11,18 +11,15 @@
  *
  */
 
-//Last modified Sept 11, 2026
+//Last modified Sept 13, 2026
 
 #include "treecle.h"
-
-#include <QLockFile>
 
 #if !defined(TREECLE_TEST_BUILD)
 int main(int argc, char *argv[])
 //start user-interface
 {
 bool ok = false;
-QString lockfilename;
 QString dataDir;
 
     Q_INIT_RESOURCE(treecle);
@@ -56,20 +53,15 @@ QString dataDir;
             "\nto comply with the standard data directory layout.");
     }
 
-    //create the data directory if it is still missing (a fresh install), so
-    //that the lock file and help/license files have a place to live
-    QDir().mkpath(dataDir);
-
-    lockfilename.append(dataDir);
-    lockfilename.append("/treelockfile.lck");
-
-    QLockFile lockfile(lockfilename);
-    ok = acquire_lock(&lockfile);
-    if (ok == false)//another instance holds the lock, exit
-        return 0;
-
-    //check for the data directory and create it if required
-    check_and_make_data_dir(dataDir);
+    //first run in this account: the data dir does not exist yet. Inform the
+    //user about its creation (images, help PDF, COPYING and file locks are
+    //kept there) and create it. On a legacy account the migration above has
+    //already made it, so nothing is shown here again.
+    if (check_and_make_data_dir(dataDir) == false) {
+        QMessageBox::critical (nullptr, "Treecle",
+            QObject::tr("Could not create the data directory: ") + dataDir);
+        return 1;
+    }
 
     MainWindow mainwindow(nullptr, dataDir);
     mainwindow.setWindowTitle(QObject::tr("Treecle"));
@@ -169,7 +161,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &dataDir) : QMainWindow(pa
 
 MainWindow::~MainWindow()
 {
-    //the lockfile is released automatically when the QLockFile object in main() is destroyed
+    //release the per-file lock, if any (kept for a restored MainWindow stack
+    //unwind; the QLockFile member is cleaned up here rather than left dangling)
+    release_file_lock();
 }
 
 void MainWindow::quit()
