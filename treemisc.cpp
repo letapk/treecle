@@ -26,7 +26,7 @@
 #include <QTextBlock>
 #include <QTextFragment>
 
-//Much of this is shamelessly copied and hacked from the examples within the Qt software
+//Much of this is shamelessly copied and hacked from the examples within the Qt example software
 void MainWindow::setup_menu_and_toolbar ()
 {
 
@@ -402,6 +402,7 @@ QTextCharFormat fmt;
     fmt.setFontPointSize((qreal)i);
     mergeFormatOnWordOrSelection(fmt);
 }
+
 
 QString unique_data_dir_name (const QString &dataDir, const QString &fileName)
 {

@@ -84,12 +84,12 @@ QList<QTreeWidgetItem *> tops;
 QString fn, s, legacyDir;
 bool ok;
 
-    //1. choose the file first: cancelling here leaves the current tree untouched
+    //choose the file first: cancelling here leaves the current tree untouched
     fn = QFileDialog::getOpenFileName(this, tr("Open File..."), QString(Openpath), tr("Treecle files (*.trc);;All files (*)"));
     if (fn.isEmpty())
         return;
 
-    //2. if the current tree has unsaved changes, save or discard it
+    //if the current tree has unsaved changes, save or discard it
     if (document_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"),
@@ -106,7 +106,7 @@ bool ok;
         //Discard: drop the current tree only after the new file has loaded
     }
 
-    //3. load the whole file into unattached items first (all-or-nothing)
+    //load the whole file into unattached items first (all-or-nothing)
     QFile file (fn);
     ok = file.open(QFile::ReadOnly);
     if (ok == false) {
@@ -152,7 +152,7 @@ bool ok;
     for (QTreeWidgetItem *t : tops)
         fixImgs(t);
 
-    //4. take the per-file lock: refuse to open the same file in two live
+    //take the per-file lock: refuse to open the same file in two live
     //instances (Cancel-only; stale locks are removed automatically). If the
     //file differs from the one currently open, release its lock first so the
     //acquired lock always matches Currentfile
@@ -166,7 +166,7 @@ bool ok;
         }
     }
 
-    //5. the file loaded completely: only now replace the current tree
+    //the file loaded completely: only now replace the current tree
     delete_tree();
     for (QTreeWidgetItem *t : tops)
         tree->addTopLevelItem(t);
@@ -351,7 +351,6 @@ bool ok;
     }
 
     QTextStream out(&file);
-    //out.setCodec("UTF-8");
     out.setEncoding (QStringConverter::Utf8);
 
     if (write_tree(tree, &out) == false || file.error() != QFileDevice::NoError) {
