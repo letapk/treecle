@@ -23,7 +23,8 @@ different instances are caught and not permitted.
 file on saving.
 5. The data file format has been tweaked to keep track of images linked to a file, and
 to keep backward compatibility with version 1.1.
-6. Search related code has been modified.
+6. Search related code has been modified. The search string is highlighted and the text
+scrolls to keep in within the editor window.
 7. Removing an image from a file also deletes it from the treecle data directory.
 
 
@@ -83,7 +84,7 @@ Compiling the source
 You will need the libraries and developement files from Qt, which are
 available from the depository of your Linux distribution or from "https://www.qt.io".
 
-You will also need the spellcheck package for Qt (libqtspell-qt6-dev) which may be available
+You will also need the spellcheck library from Qt (libqtspell-qt6-dev) which may be available
 from the package manager of your distribution. Alternatively it can be obtained from
 GitHub ("https://github.com/manisandro/qtspell"). You may need to modify "CMakeLists.txt"
 appropriately for your system to build the QtSpell libraries. After they are built, move them to
@@ -92,9 +93,6 @@ a standard location such as "/usr/local/lib64" and the QtSpell headers to "/usr/
 Since the spellcheck code also requires the "enchant" spell-checking library, that will have to be
 installed as well. This should be available through the package manager of your distribution.
 
-The current source tree compiles and runs using Qt version 6.11 under OpenSUSE Tumbleweed
-with Plasma as the desktop.
-
 If you are using QtCreator, load the project file "treecle.pro" which is available in the source
 package. Select the version you want to build (debug version or release version) and hit
 Ctrl-B. If there are no problems, this should build the binary.
@@ -102,7 +100,7 @@ Ctrl-B. If there are no problems, this should build the binary.
 The binary may be stored locally in a directoriy separate from the source subdirectory,
 depending on how QtCreator is configured. This location will be available within QtCreator.
 
-If you are not using QtCreator, running the comand:
+If you are not using QtCreator, running the qmake6 (or qmake) command:
 >qmake treecle.pro
 in a terminal should create a Makefile for your system. Then, running:
 >make
@@ -116,14 +114,19 @@ is included in the system's path. For example, in a terminal window give the com
 Enter the root password when prompted.
 
 This copies the binary to /usr/local/bin. if you need the German language translation, then do:
-sudo cp ./treecle_de.qm /usr/local/bin/treecle_de.qm
+>sudo cp ./treecle_de.qm /usr/local/bin/treecle_de.qm
 
 When executing the program for the first time in any user's account, a message notifying the creation of
-a subdirectory named "~/.local/share/treecle" will appear. In order to view the online help, the presence
-of the help file (treeclehelp.pdf) in this location is required.
+a subdirectory named "~/.local/share/treecle" will appear.
+
+In order to view the online help, the presence of the help file (treeclehelp.pdf) in this location
+is required.
 
 The file COPYING, which displays information about the program and the license is also required to be
 here to enable viewing it from within the utility.
+
+The current source tree compiles and runs using Qt version 6.11 under OpenSUSE Tumbleweed with KDE Plasma
+as the desktop.
 
 What is the copying policy?
 ---------------------------
