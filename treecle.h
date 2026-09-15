@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 14, 2026
+//Last modified Sept 15, 2026
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -121,11 +121,16 @@ class MainWindow : public QMainWindow
     QTreeWidgetItem *cur_branch = nullptr, *cur_leaf = nullptr;
     QTreeWidgetItem *copy_branch = nullptr;
     //state of the last search kept between Next/Previous presses (results,
-    //current position, and what text they apply to)
+    //current position, and what text they apply to). results holds one
+    //entry per *occurrence*, so a branch whose text mentions the search
+    //string several times appears once per mention
     struct SearchState {
         QList<QTreeWidgetItem *> results;
         int index = 0;
         QString lastText;
+        //how many of the branch's matches come before the current one: it is
+        //the one emphasised when the branch opens in the editor
+        int occRank = 0;
     } search;
 
     QTextEdit *leafview = nullptr;
@@ -258,6 +263,9 @@ public slots:
     //rescale on-screen images so their width fits the editor (display only;
     //rerun when the editor is resized so images follow the panel width)
     void fit_editor_images (int maxWidth);
+    //highlight every occurrence of the search text in the editor, emphasising
+    //the which-th one (0-based per branch); an empty needle clears the marks
+    void highlight_search (const QString &needle, int which);
 
     //preferences
     void writeprefs();

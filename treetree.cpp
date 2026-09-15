@@ -11,9 +11,12 @@
  *
  */
 
-//Last modified Sept 12, 2026
+//Last modified Sept 15, 2026
 
 #include "treecle.h"
+
+#include <QTextCursor>
+#include <QTextCharFormat>
 
 #include <utility>
 
@@ -317,7 +320,43 @@ QFont font;
     leafview->setCurrentFont (font);
     checker.setTextEdit (leafview);
 
+    //make the current search's matches visible in the branch just opened;
+    //with an empty search box this simply clears any leftover highlights
+    highlight_search(srchbox->text(), search.occRank);
+
     branch_display_in_progress = false;
+}
+
+void MainWindow::highlight_search (const QString &needle, int which)
+//mark every occurrence of the search text in the editor; the which-th one
+//(0-based, per branch) is emphasised so stepping past several hits in the
+//same branch stays visible
+{
+QList<QTextEdit::ExtraSelection> sel;
+QTextCharFormat fmtAll, fmtCur;
+QTextCursor c;
+int i;
+
+    if (needle.isEmpty()) {
+        leafview->setExtraSelections(QList<QTextEdit::ExtraSelection>());
+        return;
+    }
+
+    //all matches share a soft background, the current one a stronger one
+    fmtAll.setBackground(QColor(255, 255, 0, 120));
+    fmtCur.setBackground(QColor(255, 165, 0, 180));
+
+    i = 0;
+    c = leafdoc->find(needle, QTextCursor(leafdoc));
+    while (c.isNull() == false) {
+        QTextEdit::ExtraSelection e;
+        e.cursor = c;
+        e.format = (i == which) ? fmtCur : fmtAll;
+        sel.append(e);
+        i++;
+        c = leafdoc->find(needle, c);
+    }
+    leafview->setExtraSelections(sel);
 }
 
 void MainWindow::modify_name (QTreeWidgetItem *b)
@@ -498,15 +537,21 @@ int i, sz;
     if (sz > 0) {
         if (search.index >= sz)
             search.index = 0;
+        //which occurrence *within* the branch this one is, so it can be
+        //emphasised among the other matches shown in the editor
+        search.occRank = 0;
+        for (i = 0; i < search.index; i++)
+            if (search.results[i] == search.results[search.index])
+                search.occRank++;
         set_branch(search.results[search.index]);
         s1 = QString(tr("Displaying %1 of %2 occurences")).arg(search.index+1).arg(sz);
         statustext->setText(s1);
+        search.index++;
+        if (search.index >= sz)
+            search.index = 0;
     }
     else
         statustext->setText("Text not found");
-    search.index++;
-    if (search.index >= sz)
-        search.index = 0;
 }
 
 void MainWindow::tree_srch_pre()
@@ -545,28 +590,40 @@ int i, sz;
 
     sz = search.results.size();
     if (sz > 0) {
-        set_branch(search.results[sz - search.index - 1]);
-        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(sz - search.index).arg(sz);
+        search.index--;
+        if (search.index < 0)
+            search.index = sz - 1;
+        //which occurrence *within* the branch this one is (for the highlight)
+        search.occRank = 0;
+        for (i = 0; i < search.index; i++)
+            if (search.results[i] == search.results[search.index])
+                search.occRank++;
+        set_branch(search.results[search.index]);
+        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(search.index+1).arg(sz);
         statustext->setText(s1);
     }
     else
         statustext->setText(tr("Text not found"));
-    search.index++;
-    if (search.index >= sz)
-        search.index = 0;
 }
 
 void srch_sub (QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &results)
 {
 QString s1;
-int i, childcount;
+QTextDocument doc;
+qsizetype occ, i, childcount;
 
-    s1 = t->text(1);
     t->setSelected(false);
-    //check current branch
-    if (s1.contains(s, Qt::CaseInsensitive) == true) {
+    //match against the *visible* text of the branch: image file names, tag
+    //names and attributes inside the stored html are not searchable content
+    //(the same plain-text conversion the editor shows, so the occurrence count
+    //agrees with what is highlighted there)
+    doc.setHtml(t->text(1));
+    s1 = doc.toPlainText();
+    //every occurrence of the string in the branch is a separate search result,
+    //so the reported count and the up/down stepping work per occurrence
+    occ = s1.count(s, Qt::CaseInsensitive);
+    for (i = 0; i < occ; i++)
         results.append(t);
-    }
     //go down the sub-branches
     childcount = t->childCount();
     if (childcount > 0) {
