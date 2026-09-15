@@ -75,6 +75,15 @@ bool write_owned_images (const QString &ownFile, const QSet<QString> &owned);
 //made; a missing original is a no-op (the backup is best-effort and never
 //blocks the save that follows)
 bool make_backup_copy (const QString &filepath);
+//true when a runtime Qt message is the benign internal "QTextCursor::setPosition:
+//... out of range" warning the external spell-checker can provoke by asking for
+//a position just past the very end (typing Return after the last line); the
+//app-wide handler installed by install_qt_message_filter() drops exactly those
+bool is_ignorable_qt_warning (QtMsgType type, const QString &msg);
+//redirect the Qt message handler through a filter that forwards everything
+//except is_ignorable_qt_warning() messages to the previous handler (install
+//once, very early in main())
+void install_qt_message_filter ();
 //copy the contents of the legacy ~/.treecle data dir into the standard one
 //(returns true if anything was actually moved/copied)
 bool migrate_old_data_dir (const QString &oldDir, const QString &newDir);

@@ -330,11 +330,12 @@ QFont font;
 void MainWindow::highlight_search (const QString &needle, int which)
 //mark every occurrence of the search text in the editor; the which-th one
 //(0-based, per branch) is emphasised so stepping past several hits in the
-//same branch stays visible
+//same branch stays visible. The emphasis is also scrolled into view, so the
+//current hit is never hidden outside the visible part of the editor.
 {
 QList<QTextEdit::ExtraSelection> sel;
 QTextCharFormat fmtAll, fmtCur;
-QTextCursor c;
+QTextCursor c, curOcc;
 int i;
 
     if (needle.isEmpty()) {
@@ -349,6 +350,8 @@ int i;
     i = 0;
     c = leafdoc->find(needle, QTextCursor(leafdoc));
     while (c.isNull() == false) {
+        if (i == which)
+            curOcc = c;
         QTextEdit::ExtraSelection e;
         e.cursor = c;
         e.format = (i == which) ? fmtCur : fmtAll;
@@ -357,6 +360,14 @@ int i;
         c = leafdoc->find(needle, c);
     }
     leafview->setExtraSelections(sel);
+
+    //bring the current occurrence into view: park the caret on the start of
+    //that match (no text is selected or changed) and scroll it visible
+    if (curOcc.isNull() == false) {
+        curOcc.setPosition(curOcc.selectionStart());
+        leafview->setTextCursor(curOcc);
+        leafview->ensureCursorVisible();
+    }
 }
 
 void MainWindow::modify_name (QTreeWidgetItem *b)

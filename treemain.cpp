@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 13, 2026
+//Last modified Sept 15, 2026
 
 #include "treecle.h"
 
@@ -23,6 +23,9 @@ bool ok = false;
 QString dataDir;
 
     Q_INIT_RESOURCE(treecle);
+    //filter the benign "QTextCursor::setPosition ... out of range" warnings the
+    //external spell-checker can provoke while typing at the editor's end
+    install_qt_message_filter();
     QApplication app(argc, argv);
     app.setApplicationName("treecle");
 

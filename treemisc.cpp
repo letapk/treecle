@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 14, 2026
+//Last modified Sept 15, 2026
 
 #include "treecle.h"
 
@@ -935,6 +935,25 @@ QFileInfo fi(filepath);
     //version (one rolling backup per file, not an ever-growing pile)
     QFile::remove(filepath + ".bak");
     return QFile::copy(filepath, filepath + ".bak");
+}
+
+static QtMessageHandler previous_message_handler = nullptr;
+static void treecle_message_handler (QtMsgType type, const QMessageLogContext &context, const QString &msg)
+{
+    //drop only the benign Qt-internal cursor warning and pass everything else
+    //(including real errors and our own qWarning/qDebug) straight through
+    if (is_ignorable_qt_warning(type, msg) == false)
+        previous_message_handler(type, context, msg);
+}
+bool is_ignorable_qt_warning (QtMsgType type, const QString &msg)
+{
+    return type == QtWarningMsg
+        && msg.contains(QStringLiteral("QTextCursor::setPosition"))
+        && msg.contains(QStringLiteral("out of range"));
+}
+void install_qt_message_filter ()
+{
+    previous_message_handler = qInstallMessageHandler(treecle_message_handler);
 }
 
 bool MainWindow::acquire_file_lock (const QString &filepath)
