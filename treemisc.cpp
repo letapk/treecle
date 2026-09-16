@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 15, 2026
+//Last modified Sept 16, 2026
 
 #include "treecle.h"
 
@@ -26,7 +26,7 @@
 #include <QTextBlock>
 #include <QTextFragment>
 
-//Much of this is shamelessly copied and hacked from the examples within the Qt example software
+//Much of this is shamelessly copied and hacked from the examples within the Qt software
 void MainWindow::setup_menu_and_toolbar ()
 {
 
@@ -402,7 +402,6 @@ QTextCharFormat fmt;
     fmt.setFontPointSize((qreal)i);
     mergeFormatOnWordOrSelection(fmt);
 }
-
 
 QString unique_data_dir_name (const QString &dataDir, const QString &fileName)
 {
@@ -823,8 +822,11 @@ QList<ImgScale> work;
 
 bool MainWindow::eventFilter (QObject *obj, QEvent *ev)
 {
-    if (obj == leafview && ev->type () == QEvent::Resize)
+    if (obj == leafview && ev->type () == QEvent::Resize) {
+        branch_display_in_progress = true;
         fit_editor_images (qMax(60, leafview->viewport ()->width () - 30));
+        branch_display_in_progress = false;
+    }
     return QMainWindow::eventFilter (obj, ev);
 }
 

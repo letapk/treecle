@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 14, 2026
+//Last modified Sept 16, 2026
 
 #include "treecle.h"
 
@@ -84,12 +84,12 @@ QList<QTreeWidgetItem *> tops;
 QString fn, s, legacyDir;
 bool ok;
 
-    //choose the file first: cancelling here leaves the current tree untouched
+    //1. choose the file first: cancelling here leaves the current tree untouched
     fn = QFileDialog::getOpenFileName(this, tr("Open File..."), QString(Openpath), tr("Treecle files (*.trc);;All files (*)"));
     if (fn.isEmpty())
         return;
 
-    //if the current tree has unsaved changes, save or discard it
+    //2. if the current tree has unsaved changes, save or discard it
     if (document_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"),
@@ -106,7 +106,7 @@ bool ok;
         //Discard: drop the current tree only after the new file has loaded
     }
 
-    //load the whole file into unattached items first (all-or-nothing)
+    //3. load the whole file into unattached items first (all-or-nothing)
     QFile file (fn);
     ok = file.open(QFile::ReadOnly);
     if (ok == false) {
@@ -152,13 +152,14 @@ bool ok;
     for (QTreeWidgetItem *t : tops)
         fixImgs(t);
 
-    //take the per-file lock: refuse to open the same file in two live
+    //4. take the per-file lock: refuse to open the same file in two live
     //instances (Cancel-only; stale locks are removed automatically). If the
     //file differs from the one currently open, release its lock first so the
     //acquired lock always matches Currentfile
     if (QFileInfo(fn).canonicalFilePath() != QFileInfo(Currentfile).canonicalFilePath()) {
         release_file_lock();
         if (acquire_file_lock(fn) == false) {
+            file_read_in_progress = false;
             statustext->setText(tr("The file is already open in another instance"));
             if (Currentfile != "Noname.trc")//re-lock the file still in use
                 acquire_file_lock(Currentfile);
@@ -166,7 +167,7 @@ bool ok;
         }
     }
 
-    //the file loaded completely: only now replace the current tree
+    //5. the file loaded completely: only now replace the current tree
     delete_tree();
     for (QTreeWidgetItem *t : tops)
         tree->addTopLevelItem(t);
@@ -351,6 +352,7 @@ bool ok;
     }
 
     QTextStream out(&file);
+    //out.setCodec("UTF-8");
     out.setEncoding (QStringConverter::Utf8);
 
     if (write_tree(tree, &out) == false || file.error() != QFileDevice::NoError) {
@@ -539,6 +541,7 @@ int i, childnum;
 void MainWindow::delete_tree ()
 {
     tree->clear();
+    clear_search_state();
 
     cur_branch = nullptr;
     cur_leaf = nullptr;

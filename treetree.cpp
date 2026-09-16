@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 15, 2026
+//Last modified Sept 16, 2026
 
 #include "treecle.h"
 
@@ -112,8 +112,9 @@ QTreeWidgetItem *b, *deleted;
         deleted = cur_leaf;
         b->removeChild(deleted);
         delete deleted;
+        clear_search_state();
         set_branch(b);
-        //status text here
+        document_modified = true;
         statustext->setText(tr("Deleted sub-branch. File modified"));
 
         return;
@@ -135,6 +136,7 @@ QTreeWidgetItem *b, *deleted;
 
         tree->takeTopLevelItem(i);
         delete deleted;
+        clear_search_state();
         statustext->setText(tr("Deleted category. File modified"));
     }
     j = tree->topLevelItemCount();
@@ -183,6 +185,7 @@ QTreeWidgetItem *deleted;
         deleted = cur_leaf;
         cur_branch->removeChild(deleted);
         delete deleted;
+        clear_search_state();
         statustext->setText(tr("Deleted sub-branch. File modified"));
     }
     else {//category
@@ -202,6 +205,7 @@ QTreeWidgetItem *deleted;
 
         tree->takeTopLevelItem(i);
         delete deleted;
+        clear_search_state();
         statustext->setText(tr("Deleted category. File modified"));
     }
     if (tree->topLevelItemCount() > 0) {
@@ -508,6 +512,17 @@ int tlc;
 
     tree->sortItems(0, Qt::DescendingOrder);
     document_modified = true;//the saved order of the tree has changed
+}
+
+void MainWindow::clear_search_state()
+//drop raw pointers from the results list before any structural change (delete,
+//open, new, cut) that destroys tree items; callers are free to also clear
+//lastText when the search query should be forgotten entirely
+{
+    search.results.clear();
+    search.index = 0;
+    search.lastText.clear();
+    search.occRank = 0;
 }
 
 void MainWindow::tree_srch_nxt()
