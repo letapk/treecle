@@ -48,7 +48,7 @@ QString s;
 
     show_branch_data ();
 
-    document_modified = true;
+    set_document_modified();
     //status text here
     statustext->setText(tr("Added a new category. File modified"));
 }
@@ -83,7 +83,7 @@ QTreeWidgetItem *b;
     tree->setCurrentItem(b);
 
     show_branch_data ();
-    document_modified = true;
+    set_document_modified();
     statustext->setText(tr("Added a new branch. File modified"));
 }
 
@@ -114,7 +114,7 @@ QTreeWidgetItem *b, *deleted;
         delete deleted;
         clear_search_state();
         set_branch(b);
-        document_modified = true;
+        set_document_modified();
         statustext->setText(tr("Deleted sub-branch. File modified"));
 
         return;
@@ -151,7 +151,7 @@ QTreeWidgetItem *b, *deleted;
         leafdoc->setHtml("<p></p>");
     }
     catflag = 1;
-    document_modified = true;
+    set_document_modified();
 }
 
 void MainWindow::tree_cutbranch()
@@ -163,7 +163,7 @@ void MainWindow::tree_cutbranch()
 
     tree_copybranch();
     tree_delbranch_after_copy();
-    document_modified = true;
+    set_document_modified();
     //status text here
     statustext->setText(tr("File modified"));
 }
@@ -218,7 +218,7 @@ QTreeWidgetItem *deleted;
         statustext->setText(tr("The tree is empty"));
         leafdoc->setHtml("<p></p>");
     }
-    document_modified = true;
+    set_document_modified();
     catflag = 1;
 }
 
@@ -497,7 +497,7 @@ int tlc;
     }
 
     tree->sortItems(0, Qt::AscendingOrder);
-    document_modified = true;//the saved order of the tree has changed
+    set_document_modified();//the saved order of the tree has changed
 }
 
 void MainWindow::sort_desc_tree()
@@ -511,7 +511,7 @@ int tlc;
     }
 
     tree->sortItems(0, Qt::DescendingOrder);
-    document_modified = true;//the saved order of the tree has changed
+    set_document_modified();//the saved order of the tree has changed
 }
 
 void MainWindow::clear_search_state()

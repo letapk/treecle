@@ -32,6 +32,19 @@ void MainWindow::new_file()
 {
 QString s;
 
+    //common tail: a new file is always the unsaved placeholder name holding
+    //one fresh branch, with the editor focused and the modified state clean
+    auto startNew = [&]() {
+        Currentfile.clear();
+        Currentfile.append("Noname.trc");
+        release_file_lock();
+        tree_addbranch();//the new tree starts with one branch
+        document_modified = false;//a fresh document is not dirty
+        updateWindowTitle();
+        set_editor_focus();
+        statustext->setText(tr("New file"));
+    };
+
     if (document_modified == true) {
         QMessageBox::StandardButton ret;
         ret = QMessageBox::warning(this, tr("Treecle"), tr("Do you wish to save or discard the current tree?\n"),
@@ -45,13 +58,9 @@ QString s;
             if (save_file() == true) {//file saved by the user
                 s.append (tr("Saved "));
                 s.append (Currentfile);
-                statustext->setText(s);
                 delete_tree();
-                tree->setHeaderLabel("Filename");
-                Currentfile.clear();
-                Currentfile.append("Noname.trc");
-                release_file_lock();
-                document_modified = false;
+                startNew();
+                statustext->setText(s);//keep the "Saved ..." confirmation
             }
             else {//user cancelled the save operation using the cancel button in the file dialog
                 statustext->setText(tr("Tree has not been saved"));
@@ -60,20 +69,13 @@ QString s;
         }
         if (ret == QMessageBox::Discard) {
             delete_tree();
-            tree->setHeaderLabel("Filename");
-            statustext->setText(tr("Tree discarded"));
-            document_modified = false;
+            startNew();
             return;
         }
     }
     else {
         delete_tree();
-        tree->setHeaderLabel("Filename");
-        statustext->setText(tr("New file"));
-        Currentfile.clear();
-        Currentfile.append("Noname.trc");
-        release_file_lock();
-        document_modified = false;
+        startNew();
     }
 }
 
@@ -175,8 +177,8 @@ bool ok;
     file_read_in_progress = false;
     Currentfile = fn;
     document_modified = false;
+    updateWindowTitle();
     Openpath = fi.path();//remember this folder for the next dialog
-    tree->setHeaderLabel(fi.fileName());
     //restore the images this document has made copies of, so a removal in a
     //later session can still be cleaned up
     loadOwnedImages(fn);
@@ -343,7 +345,6 @@ bool ok;
     make_backup_copy(Currentfile);
 
     QSaveFile file (Currentfile);
-    QFileInfo fi(Currentfile);
 
     ok = file.open(QFile::WriteOnly);
     if (ok == false) {
@@ -365,12 +366,11 @@ bool ok;
         return false;
     }
 
-    tree->setHeaderLabel(fi.fileName());
-
     s.append (tr("Saved "));
     s.append (Currentfile);
     statustext->setText(s);
     document_modified = false;
+    updateWindowTitle();
     gcOrphanedImages();
     return true;
 }
@@ -448,13 +448,12 @@ bool ok;
         return false;
     }
 
-    tree->setHeaderLabel(fi.fileName());
-
     s.append (tr("Saved "));
     s.append (fn);
     statustext->setText(s);
     Currentfile = fn;
     document_modified = false;
+    updateWindowTitle();
     Openpath = fi.path();//remember this folder for the next dialog
     gcOrphanedImages();
     //the sidecar follows the new file key; drop the stale one if the previous

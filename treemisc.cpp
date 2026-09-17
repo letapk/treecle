@@ -1050,6 +1050,15 @@ QTreeWidgetItem *it;
 
 void MainWindow::set_modified_flag()
 {
-    if (file_read_in_progress == false && branch_display_in_progress == false)
-        document_modified = true;
+    if (file_read_in_progress == false && branch_display_in_progress == false) {
+        set_document_modified();
+    }
+}
+
+void MainWindow::updateWindowTitle()
+{
+    QString title = tr("Treecle") + " - " + QFileInfo(Currentfile).fileName();
+    if (document_modified == true)
+        title.append(" *");
+    setWindowTitle(title);
 }

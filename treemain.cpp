@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 15, 2026
+//Last modified Sept 16, 2026
 
 #include "treecle.h"
 
@@ -67,8 +67,9 @@ QString dataDir;
     }
 
     MainWindow mainwindow(nullptr, dataDir);
-    mainwindow.setWindowTitle(QObject::tr("Treecle"));
     mainwindow.show();
+    //item: the program starts with a fresh document (one branch, editor focus)
+    mainwindow.new_file();
 
     return app.exec();
 }
@@ -96,7 +97,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &dataDir) : QMainWindow(pa
     //connect (tree, &QTreeWidget::itemActivated, this, &MainWindow::set_branch);
     connect (tree, &QTreeWidget::itemSelectionChanged, this, &MainWindow::get_highlighted_branch);
     connect (tree, &QTreeWidget::itemChanged, this, &MainWindow::set_modified_flag);
-    tree->setHeaderLabel(tr("Filename"));
+    //the document name is shown in the window title, so the tree's own header
+    //row is hidden; the category list starts right below the toolbar
+    tree->setHeaderHidden(true);
 
     panelshortcut = new QShortcut (this);
     panelshortcut->setKey (Qt::CTRL | Qt::Key_Tab);
@@ -160,6 +163,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &dataDir) : QMainWindow(pa
     }
 
     //this->setFocus();
+
+    //window title reflects the current file ("Treecle - Noname.trc" at start)
+    updateWindowTitle();
 }
 
 MainWindow::~MainWindow()

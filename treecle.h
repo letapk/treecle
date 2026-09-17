@@ -212,6 +212,11 @@ public slots:
     //modification flag access (document_modified)
     bool isModified() const { return document_modified; }
     void setModified(bool m) { document_modified = m; }
+    //set document_modified and refresh the window title's "modified" star
+    void set_document_modified() { document_modified = true; updateWindowTitle(); }
+    //keep the window title in sync: "Treecle - <filename>" plus an asterisk
+    //when document_modified is set ("Treecle - Noname.trc *" for a new file)
+    void updateWindowTitle();
     //directory the open/save dialogs start in (persistence primitives)
     QString openDir() const { return Openpath; }
     void quit();
