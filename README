@@ -9,6 +9,14 @@ representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
 
+
+Changes in version 1.2.1
+------------------------
+1. The filename is displayed in the title bar.
+2. A visual indication (*) is added to the filename when it is modified.
+3. The program begins with a new blank file with one branch already added.
+
+
 Changes in version 1.2
 ----------------------
 1. The program saves file specific lockfiles, images and other data in ~/.local/share/treecle.
@@ -26,7 +34,6 @@ to keep backward compatibility with version 1.1.
 6. Search related code has been modified. The search string is highlighted and the text
 scrolls to keep in within the editor window.
 7. Removing an image from a file also deletes it from the treecle data directory.
-
 
 These changes seem to be significant enough for moving from the 1.1 versioning series to 1.2.
 
@@ -85,10 +92,14 @@ You will need the libraries and developement files from Qt, which are
 available from the depository of your Linux distribution or from "https://www.qt.io".
 
 You will also need the spellcheck library from Qt (libqtspell-qt6-dev) which may be available
-from the package manager of your distribution. Alternatively it can be obtained from
-GitHub ("https://github.com/manisandro/qtspell"). You may need to modify "CMakeLists.txt"
+from the package manager of your distribution.
+Alternatively it can be obtained from GitHub ("https://github.com/manisandro/qtspell").
+If you wish to roll your own, follow the instructions there. You may need to modify "CMakeLists.txt"
 appropriately for your system to build the QtSpell libraries. After they are built, move them to
 a standard location such as "/usr/local/lib64" and the QtSpell headers to "/usr/local/include".
+
+However, if you already have libqtspell-qt6-dev, the QtSpell headers are included in the Treecle
+source.
 
 Since the spellcheck code also requires the "enchant" spell-checking library, that will have to be
 installed as well. This should be available through the package manager of your distribution.
@@ -141,10 +152,11 @@ will receive a copy of the GNU General Public License along with this program;
 for more information, write to the Free Software Foundation, Inc., 675 Mass
 Ave, Cambridge, MA 02139, USA.
 
-The QtSpell files in this software are being used in compliance with the
-license under which they have been made available. Many thanks to the
-author Sandro Mani for the package, whose Github repo is at:
+The QtSpell files supplied with this software are used in compliance with the
+GPL3 license under which they have been made available, by their author Sandro Mani
+whose Github repo is at:
 https://github.com/manisandro/qtspell
+Many thanks to Sandro for this fantastic utility.
 
 What else?
 ----------
