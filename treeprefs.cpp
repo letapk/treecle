@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 9, 2026
+//Last modified Sep 9, 2026
 
 #include "treecle.h"
 

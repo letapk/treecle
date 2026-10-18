@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 16, 2026
+//Last modified Oct 16, 2026
 
 #include "treecle.h"
 
@@ -498,6 +498,23 @@ QString ownFile, path = filepath;
         write_owned_images(image_own_name(DataDir, path), ownedImages);
 }
 
+void MainWindow::unshareImagesAfterSaveAs (const QString &prevFile, const QString &newFile)
+{
+    //a plain save (unsaved placeholder, or Save As back to the same path)
+    //copies nothing: the session's image copies simply belong to newFile
+    if (prevFile == "Noname.trc" || trc_paths_differ(prevFile, newFile) == false)
+        return;
+
+    //Save As copies the document, so both .trc files reference the same
+    //physical image copies from now on. A single owner could delete an image
+    //the other document still displays, so neither may own them: drop this
+    //document's set (the following gcOrphanedImages() persists that for
+    //newFile) and remove the previous file's sidecar. The copies themselves
+    //are left on disk - never deleted wrongly, only never cleaned up.
+    ownedImages.clear();
+    QFile::remove(image_own_name(DataDir, prevFile));
+}
+
 void MainWindow::insertImage()
 {
 QString s, filters, fname;
@@ -871,14 +888,27 @@ bool did_migrate = false;
 
 //canonical path when the file exists (resolves symlinks and ".."); a plain
 //absolute path otherwise (e.g. a Save As target not written yet)
-static QString file_path_key (const QString &filepath)
+static QString existing_path_key (const QString &filepath)
 {
 QFileInfo fi(filepath);
 QString key = fi.canonicalFilePath();
 
     if (key.isEmpty())
         key = fi.absoluteFilePath();
-    return QString::fromLatin1(QCryptographicHash::hash(key.toUtf8(), QCryptographicHash::Sha1).toHex());
+    return key;
+}
+
+static QString file_path_key (const QString &filepath)
+{
+    return QString::fromLatin1(QCryptographicHash::hash(existing_path_key(filepath).toUtf8(), QCryptographicHash::Sha1).toHex());
+}
+
+bool trc_paths_differ (const QString &a, const QString &b)
+{
+    //keys, not hashes: both sides go through the same canonical-or-absolute
+    //rule, so two not-yet-written paths compare by absolute path and are
+    //never wrongly "equal" just because neither canonical path exists yet
+    return existing_path_key(a) != existing_path_key(b);
 }
 
 QString file_lock_name (const QString &dataDir, const QString &filepath)

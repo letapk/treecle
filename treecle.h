@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 16, 2026
+//Last modified Oct 16, 2026
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -103,6 +103,17 @@ QString unique_data_dir_name (const QString &dataDir, const QString &fileName);
 //bare data-dir image filenames referenced by <img src> tags in any branch text
 //(external URLs and absolute paths are never cleanup candidates)
 QSet<QString> collect_image_refs (const QTreeWidget &tree);
+//maximum nesting depth of a tree, shared by the .trc parser and the editing
+//slots: files that go deeper are rejected as corrupt, and the UI refuses to
+//add or paste branches past this limit, so every recursive read/write/search/
+//destroy path stays stack-safe and both sides agree on what a valid tree is
+static const int MAX_TREE_DEPTH = 1000;
+//true when the two paths name different files: the canonical path is used when
+//the file exists and the plain absolute path otherwise, so a Save As target
+//that has not been written yet still compares correctly (comparing the two
+//canonical paths directly would compare "" against "" and wrongly report the
+//same file - which skipped the lock switch on the most common first save)
+bool trc_paths_differ (const QString &a, const QString &b);
 
 //result of parsing the tree-file header (magic line + format version)
 enum class TrcHeaderStatus { Ok, Corrupt, NewerVersion };
@@ -203,6 +214,12 @@ public slots:
     //record a data-dir image copy as belonging to the current document
     //(insertImage calls this; exposed so the cleanup is testable without dialogs)
     void recordInsertedImage(const QString &basename);
+    //after a successful Save As that moved the document from a real file to a
+    //different path: both files now reference the same physical image copies,
+    //so neither may ever delete them - drop this document's ownership and the
+    //old file's sidecar (the copies stay on disk unowned: some data-dir hygiene
+    //is lost, but the other document's links can never break)
+    void unshareImagesAfterSaveAs(const QString &prevFile, const QString &newFile);
 
     //persistence primitives (pure file format, testable without dialogs)
     bool write_tree(QTreeWidget *tree, QTextStream *out);
@@ -219,6 +236,9 @@ public slots:
     void updateWindowTitle();
     //directory the open/save dialogs start in (persistence primitives)
     QString openDir() const { return Openpath; }
+    //point the document at a concrete file path without the Save As dialog
+    //(test seam only: the modal dialog paths stay un-automated)
+    void setCurrentFile(const QString &filepath) { Currentfile = filepath; updateWindowTitle(); }
     void quit();
 
     //help menu
@@ -246,7 +266,9 @@ public slots:
     void set_branch (QTreeWidgetItem *b);
     void get_data_from_leaf();
     void save_this_branch (QTreeWidgetItem *cat, QTextStream *out);
-    bool read_this_branch (QTreeWidgetItem *cat, QTextStream *in);
+    //depth counts the branch itself (top level = 1); the default keeps the
+    //shallow one-off reads used by the tests working unchanged
+    bool read_this_branch (QTreeWidgetItem *cat, QTextStream *in, int depth = 1);
 
     void delete_tree();
 

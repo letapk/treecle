@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sept 16, 2026
+//Last modified Oct 16, 2026
 
 #include "treecle.h"
 
@@ -24,6 +24,37 @@ void collapse (QTreeWidgetItem *t);
 void expand (QTreeWidgetItem *t);
 void srch_sub(QTreeWidgetItem *t, const QString &s, QList<QTreeWidgetItem *> &results);
 QTreeWidgetItem *srch_cat (QTreeWidgetItem *t, QString s);
+
+//nesting level of an item (top level = 1), walked iteratively so measuring
+//never recurses even on a tree at the depth limit
+static int item_depth (QTreeWidgetItem *item)
+{
+int d = 0;
+
+    for (QTreeWidgetItem *i = item; i != nullptr; i = i->parent())
+        d++;
+    return d;
+}
+
+//height of a subtree (the root itself counts as 1), also iterative
+static int subtree_height (QTreeWidgetItem *root)
+{
+struct Frame { QTreeWidgetItem *item; int level; };
+QList<Frame> stack;
+int h = 0;
+
+    if (root == nullptr)
+        return 0;
+    stack.append({root, 1});
+    while (stack.isEmpty() == false) {
+        Frame cur = stack.takeLast();
+        if (cur.level > h)
+            h = cur.level;
+        for (int c = 0; c < cur.item->childCount(); c++)
+            stack.append({cur.item->child(c), cur.level + 1});
+    }
+    return h;
+}
 
 void MainWindow::tree_addbranch()
 {
@@ -60,6 +91,17 @@ QTreeWidgetItem *b;
 
     if (tree->topLevelItemCount() == 0) {
         statustext->setText(tr("No category present. Add one first."));
+        return;
+    }
+    QTreeWidgetItem *parentItem = (catflag == 0) ? cur_leaf : cur_branch;
+    if (parentItem == nullptr) {
+        statustext->setText(tr("No category present. Add one first."));
+        return;
+    }
+    //refuse to grow past the format's nesting cap: the .trc reader rejects
+    //deeper trees, so an unbounded add would produce an unloadable file
+    if (item_depth(parentItem) >= MAX_TREE_DEPTH) {
+        statustext->setText(tr("Maximum branch nesting depth reached. Nothing was added."));
         return;
     }
     b = new QTreeWidgetItem ();
@@ -255,8 +297,17 @@ void MainWindow::tree_pastebranch()
         return;
     }
 
+    //refuse a paste that would push any part of the pasted subtree past the
+    //format's nesting cap (the reader would reject the saved file later); the
+    //copy is kept, so pasting it somewhere shallower still works
+    if (item_depth(cur_leaf) + subtree_height(copy_branch) > MAX_TREE_DEPTH) {
+        statustext->setText(tr("Pasting here would exceed the maximum nesting depth. Nothing was pasted."));
+        return;
+    }
+
     cur_leaf->insertChild(0, copy_branch);
     copy_branch = nullptr;
+    set_document_modified();
     statustext->setText(tr("Copied branch. File modified"));
 }
 
