@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 16, 2026
+//Last modified Oct 19, 2026
 
 #include "treecle.h"
 
@@ -332,7 +332,13 @@ int i;
         if (read_this_branch (top, in) == false)
             return false;
     }
-    return (in->status() == QTextStream::Ok);
+    if (in->status() != QTextStream::Ok)
+        return false;
+    //a valid file ends right after the last branch: trailing whitespace and
+    //newlines are tolerated, but any other trailing content means the file was
+    //not written by Treecle (or is corrupt), so it is rejected wholesale
+    in->skipWhiteSpace();
+    return in->atEnd();
 }
 
 bool MainWindow::save_file()
@@ -354,7 +360,7 @@ bool ok;
 
     //preserve the version about to be replaced: the .bak always holds the
     //immediately-previous save, so a later bad save is never fatal
-    make_backup_copy(Currentfile);
+    BackupResult backup = make_backup_copy(Currentfile);
 
     QSaveFile file (Currentfile);
 
@@ -380,10 +386,16 @@ bool ok;
 
     s.append (tr("Saved "));
     s.append (Currentfile);
-    statustext->setText(s);
+    //the write itself succeeded; a skipped backup or image-metadata update is
+    //reported alongside it and never fails the save
+    if (backup == BackupResult::Failed)
+        s.append (tr(" (the previous version could not be backed up)"));
+    sessionInserted.clear();//these copies are now part of the saved document
     document_modified = false;
     updateWindowTitle();
-    gcOrphanedImages();
+    if (gcOrphanedImages() == false)
+        s.append (tr(" (image metadata could not be updated)"));
+    statustext->setText(s);
     return true;
 }
 
@@ -435,7 +447,7 @@ bool ok;
 
     //when we overwrite an existing file, keep its current version as .bak
     //(a Save As to a brand-new path simply has nothing to back up)
-    make_backup_copy(fn);
+    BackupResult backup = make_backup_copy(fn);
 
     QSaveFile file (fn);
 
@@ -464,16 +476,22 @@ bool ok;
 
     s.append (tr("Saved "));
     s.append (fn);
-    statustext->setText(s);
+    //the write itself succeeded; a skipped backup or image-metadata update is
+    //reported alongside it and never fails the save
+    if (backup == BackupResult::Failed)
+        s.append (tr(" (the previous version could not be backed up)"));
     Currentfile = fn;
+    sessionInserted.clear();//these copies are now part of the saved document
     document_modified = false;
     updateWindowTitle();
     Openpath = fi.path();//remember this folder for the next dialog
     //the image copies the previous file owned are shared with it now, so
     //ownership must drop before the cleanup below runs (a fresh document's
     //session copies, or a save back to the same path, simply stay owned)
-    unshareImagesAfterSaveAs(prevFile, fn);
-    gcOrphanedImages();
+    bool unshared = unshareImagesAfterSaveAs(prevFile, fn);
+    if (gcOrphanedImages() == false || unshared == false)
+        s.append (tr(" (image metadata could not be updated)"));
+    statustext->setText(s);
 
     return true;
 }
@@ -552,6 +570,10 @@ int i, childnum;
 
 void MainWindow::delete_tree ()
 {
+    //delete image copies inserted but never saved (a Discard) before the tree
+    //and its ownership state are dropped; a save clears the set first, so this
+    //is a no-op on the save-then-new/open path
+    discardUnsavedImages();
     tree->clear();
     clear_search_state();
 

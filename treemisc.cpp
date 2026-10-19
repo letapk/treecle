@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 16, 2026
+//Last modified Oct 19, 2026
 
 #include "treecle.h"
 
@@ -25,6 +25,7 @@
 #include <QImageReader>
 #include <QTextBlock>
 #include <QTextFragment>
+#include <utility>
 
 //Much of this is shamelessly copied and hacked from the examples within the Qt software
 void MainWindow::setup_menu_and_toolbar ()
@@ -229,7 +230,6 @@ void MainWindow::setup_menu_and_toolbar ()
     actionInsertImage= new QAction(QIcon::fromTheme("", QIcon(":/images/insert-image.png")), tr("&Insert image"), this);
     actionInsertImage->setPriority(QAction::LowPriority);
     connect(actionInsertImage, &QAction::triggered, this, &MainWindow::insertImage);
-    actionInsertImage->setCheckable(true);
 
     QPixmap pix(16, 16);
     pix.fill(Qt::black);
@@ -239,7 +239,6 @@ void MainWindow::setup_menu_and_toolbar ()
     comboFont = new QFontComboBox(tb2);
     comboFont->setEditable(false);
     comboFont->setFontFilters(QFontComboBox::ScalableFonts | QFontComboBox::ProportionalFonts);
-    comboFont->addItems(QFontDatabase::families(QFontDatabase::WritingSystem (1)));
     comboFont->setCurrentFont(QApplication::font());
     connect(comboFont, &QFontComboBox::currentFontChanged, this, &MainWindow::fontFamily);
 
@@ -422,14 +421,30 @@ int n = 1;
     return target;
 }
 
-//walk the whole tree, collecting the bare data-dir image filenames referenced
-//by <img src> tags in every branch's text; paths containing '/' or '://' are
-//external/absolute and never cleanup candidates
-QSet<QString> collect_image_refs (const QTreeWidget &tree)
+//bare data-dir image filenames referenced by <img src> tags in one block of
+//html; paths containing '/' or '://' are external/absolute and never cleanup
+//candidates. Shared by the tree walk and the .bak protection scan
+static QSet<QString> collect_image_refs_from_html (const QString &html)
 {
 QRegularExpression re("<img\\s[^>]*?src=\"([^\"]*)\"[^>]*>");
 QRegularExpressionMatchIterator it;
 QRegularExpressionMatch m;
+QSet<QString> refs;
+
+    it = re.globalMatch(html);
+    while (it.hasNext()) {
+        m = it.next();
+        QString src = m.captured(1);
+        if (src.indexOf('/') == -1 && src.indexOf("://") == -1)
+            refs.insert(src);
+    }
+    return refs;
+}
+
+//walk the whole tree, collecting the bare data-dir image filenames referenced
+//by <img src> tags in every branch's text
+QSet<QString> collect_image_refs (const QTreeWidget &tree)
+{
 QList<QTreeWidgetItem *> stack;
 QSet<QString> refs;
 
@@ -437,36 +452,72 @@ QSet<QString> refs;
         stack.append(tree.topLevelItem(i));
     while (stack.isEmpty() == false) {
         QTreeWidgetItem *item = stack.takeLast();
-        it = re.globalMatch(item->text(1));
-        while (it.hasNext()) {
-            m = it.next();
-            QString src = m.captured(1);
-            if (src.indexOf('/') == -1 && src.indexOf("://") == -1)
-                refs.insert(src);
-        }
+        refs.unite(collect_image_refs_from_html(item->text(1)));
         for (int c = 0; c < item->childCount(); c++)
             stack.append(item->child(c));
     }
     return refs;
 }
 
+//bare image filenames referenced by a document's rolling ".bak" backup (empty
+//when there is no backup), so orphan cleanup never deletes an image the
+//restorable backup still displays
+static QSet<QString> image_refs_from_backup (const QString &filepath)
+{
+QFile bak(filepath + ".bak");
+QString html;
+
+    if (bak.open(QIODevice::ReadOnly | QIODevice::Text) == false)
+        return QSet<QString>();
+    html = QString::fromUtf8(bak.readAll());
+    return collect_image_refs_from_html(html);
+}
+
 //only writer of ownedImages alongside the (modal) insertImage(); kept separate
 //so the orphan cleanup is testable without dialogs
 void MainWindow::recordInsertedImage (const QString &basename)
 {
-    if (basename.isEmpty() == false)
+    if (basename.isEmpty() == false) {
         ownedImages.insert(basename);
+        //remember it as belonging to no saved document yet, so a later Discard
+        //can delete the copy instead of leaking it into the data dir
+        sessionInserted.insert(basename);
+        //persist right away (when a real file is open), so a crash before the
+        //next save cannot orphan the copy; the set is rewritten on every save
+        if (Currentfile != "Noname.trc")
+            write_owned_images(image_own_name(DataDir, Currentfile), ownedImages);
+    }
 }
 
 void MainWindow::loadOwnedImages (const QString &filepath)
 {
     ownedImages = load_owned_images(image_own_name(DataDir, filepath));
+    sessionInserted.clear();
 }
 
-void MainWindow::gcOrphanedImages (const QString &filepath)
+void MainWindow::discardUnsavedImages()
+{
+    //copies inserted since the last save belong to no document on disk: when the
+    //user discards the edits, delete them (a successful save clears the set
+    //first, so this only ever fires on an actual Discard)
+    if (sessionInserted.isEmpty())
+        return;
+    for (const QString &name : std::as_const(sessionInserted)) {
+        if (is_safe_sidecar_name(name))
+            QFile::remove(DataDir + "/" + name);
+        ownedImages.remove(name);
+    }
+    sessionInserted.clear();
+    //the on-disk document still owns its other copies: persist the pruned set
+    if (Currentfile != "Noname.trc")
+        write_owned_images(image_own_name(DataDir, Currentfile), ownedImages);
+}
+
+bool MainWindow::gcOrphanedImages (const QString &filepath)
 {
 QSet<QString> refs, keep;
-QString ownFile, path = filepath;
+QString path = filepath;
+bool ok = true;
 
     if (path.isEmpty())
         path = Currentfile;
@@ -474,11 +525,22 @@ QString ownFile, path = filepath;
         //nothing to prune, but still drop a sidecar the document no longer owns
         //anything through (e.g. the previous path of a Save As)
         if (path != "Noname.trc")
-            write_owned_images(image_own_name(DataDir, path), QSet<QString>());
-        return;
+            ok = write_owned_images(image_own_name(DataDir, path), QSet<QString>());
+        return ok;
     }
     refs = collect_image_refs(*tree);
+    //an image still referenced by the rolling "<path>.bak" backup is kept too:
+    //the backup must stay a restorable document, so its images survive until a
+    //later save rolls the backup away
+    if (path != "Noname.trc")
+        refs.unite(image_refs_from_backup(path));
     for (const QString &name : ownedImages) {
+        //a name that is not a plain filename (a hostile/corrupt sidecar) is never
+        //joined to the data dir or deleted
+        if (is_safe_sidecar_name(name) == false) {
+            keep.insert(name);
+            continue;
+        }
         //keep every still-referenced image; unreferenced ones are copies owned
         //by this document (and only this one) - the document is done with them
         if (refs.contains(name)) {
@@ -495,15 +557,16 @@ QString ownFile, path = filepath;
     //persist the pruned set so ownership survives the next session (no sidecar
     //is ever written for the unsaved "Noname.trc" placeholder)
     if (path != "Noname.trc")
-        write_owned_images(image_own_name(DataDir, path), ownedImages);
+        ok = write_owned_images(image_own_name(DataDir, path), ownedImages);
+    return ok;
 }
 
-void MainWindow::unshareImagesAfterSaveAs (const QString &prevFile, const QString &newFile)
+bool MainWindow::unshareImagesAfterSaveAs (const QString &prevFile, const QString &newFile)
 {
     //a plain save (unsaved placeholder, or Save As back to the same path)
     //copies nothing: the session's image copies simply belong to newFile
     if (prevFile == "Noname.trc" || trc_paths_differ(prevFile, newFile) == false)
-        return;
+        return true;
 
     //Save As copies the document, so both .trc files reference the same
     //physical image copies from now on. A single owner could delete an image
@@ -512,7 +575,9 @@ void MainWindow::unshareImagesAfterSaveAs (const QString &prevFile, const QStrin
     //newFile) and remove the previous file's sidecar. The copies themselves
     //are left on disk - never deleted wrongly, only never cleaned up.
     ownedImages.clear();
-    QFile::remove(image_own_name(DataDir, prevFile));
+    //false only when the previous sidecar exists but cannot be removed
+    return (QFile::exists(image_own_name(DataDir, prevFile)) == false)
+        || QFile::remove(image_own_name(DataDir, prevFile));
 }
 
 void MainWindow::insertImage()
@@ -562,7 +627,7 @@ QMessageBox msgBox;
     if (tree->topLevelItemCount() == 0)
         return;
     //store only the file name; the data dir path is prepended when displayed
-    editor->insertHtml(QString("<img src=\"%1\">").arg(QFileInfo(fname).fileName()));
+    editor->insertHtml(QString("<img src=\"%1\">").arg(QFileInfo(fname).fileName().toHtmlEscaped()));
     //immediately fit the new image to the panel width (aspect ratio kept)
     fit_editor_images(qMax(60, leafview->viewport()->width() - 30));
 }
@@ -608,6 +673,7 @@ void MainWindow::closeEvent(QCloseEvent *event)
         }
 
         if (ret == QMessageBox::Discard) {
+            discardUnsavedImages();//never-saved image copies go with the edits
             statustext->setText(tr("Discarded"));
             writeprefs();
             event->accept();
@@ -640,11 +706,9 @@ QMessageBox msgBox;
         msgBox.exec();
     }
     else {
-        s1.append ("file://");
-        s1.append (Helpfilename);
-        ok = QDesktopServices::openUrl (QUrl (s1));
+        ok = QDesktopServices::openUrl (QUrl::fromLocalFile (Helpfilename));
         if (ok == false) {
-            msgBox.setText("Could not open help file.");
+            msgBox.setText(QObject::tr("Could not open help file."));
             msgBox.exec();
         }
     }
@@ -923,6 +987,16 @@ QString image_own_name (const QString &dataDir, const QString &filepath)
     return dataDir + "/" + file_path_key(filepath) + ".own";
 }
 
+bool is_safe_sidecar_name (const QString &name)
+{
+    //a sidecar entry is a bare image filename: reject anything that could escape
+    //the data dir when joined to it (deletion of arbitrary files otherwise)
+    return name.isEmpty() == false
+        && name != "." && name != ".."
+        && name.contains('/') == false
+        && name.contains('\\') == false;
+}
+
 QSet<QString> load_owned_images (const QString &ownFile)
 {
 QSet<QString> owned;
@@ -933,7 +1007,9 @@ QString line;
         return owned;//missing or unreadable sidecar: nothing is owned
     while (in.atEnd() == false) {
         line = in.readLine().trimmed();
-        if (line.isEmpty() == false)
+        //a corrupt/hostile entry is dropped at the door, so it can never reach
+        //the deletion path
+        if (is_safe_sidecar_name(line))
             owned.insert(line);
     }
     return owned;
@@ -953,21 +1029,30 @@ bool write_owned_images (const QString &ownFile, const QSet<QString> &owned)
     QTextStream ts(&out);
     ts.setEncoding(QStringConverter::Utf8);
     for (const QString &name : names)
-        ts << name << "\n";
+        if (is_safe_sidecar_name(name))//never persist a path-escaping entry
+            ts << name << "\n";
     return out.commit();
 }
 
-bool make_backup_copy (const QString &filepath)
+BackupResult make_backup_copy (const QString &filepath)
 {
 QFileInfo fi(filepath);
+QString tmp = filepath + ".bak.tmp";
 
     //nothing to back up when the file has never been saved to this path
     if (fi.exists() == false || fi.isFile() == false)
-        return false;
-    //the old .bak is replaced so it always holds the immediately-previous
-    //version (one rolling backup per file, not an ever-growing pile)
+        return BackupResult::NoOriginal;
+    //copy to a temporary name first, then swap it in: a failed copy leaves the
+    //existing .bak (the last good version) untouched
+    QFile::remove(tmp);
+    if (QFile::copy(filepath, tmp) == false)
+        return BackupResult::Failed;
     QFile::remove(filepath + ".bak");
-    return QFile::copy(filepath, filepath + ".bak");
+    if (QFile::rename(tmp, filepath + ".bak") == false) {
+        QFile::remove(tmp);
+        return BackupResult::Failed;
+    }
+    return BackupResult::Created;
 }
 
 static QtMessageHandler previous_message_handler = nullptr;

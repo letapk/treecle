@@ -1,5 +1,5 @@
-Treecle 1.2.2
--------------
+Treecle
+-------
 Treecle creates and manages user-defined, custom-built trees.
 
 Whatever that means, it does sounds impressive.
@@ -9,6 +9,9 @@ representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
 
+Changes in version 1.2.3
+------------------------
+1. Bug fixes.
 
 Changes in version 1.2.2
 ------------------------

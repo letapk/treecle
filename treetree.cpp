@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 16, 2026
+//Last modified Oct 19, 2026
 
 #include "treecle.h"
 
@@ -571,7 +571,7 @@ void MainWindow::clear_search_state()
 //lastText when the search query should be forgotten entirely
 {
     search.results.clear();
-    search.index = 0;
+    search.shown = -1;
     search.lastText.clear();
     search.occRank = 0;
 }
@@ -594,7 +594,7 @@ int i, sz;
         return;
     }
     if (s != search.lastText) {
-        search.index = 0;
+        search.shown = -1;
         search.lastText = s;
     }
 
@@ -612,23 +612,20 @@ int i, sz;
 
     sz = search.results.size();
     if (sz > 0) {
-        if (search.index >= sz)
-            search.index = 0;
+        //step forward from the currently shown occurrence (wrapping)
+        search.shown = (search.shown + 1) % sz;
         //which occurrence *within* the branch this one is, so it can be
         //emphasised among the other matches shown in the editor
         search.occRank = 0;
-        for (i = 0; i < search.index; i++)
-            if (search.results[i] == search.results[search.index])
+        for (i = 0; i < search.shown; i++)
+            if (search.results[i] == search.results[search.shown])
                 search.occRank++;
-        set_branch(search.results[search.index]);
-        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(search.index+1).arg(sz);
+        set_branch(search.results[search.shown]);
+        s1 = QString(tr("Displaying %1 of %2 occurrences")).arg(search.shown+1).arg(sz);
         statustext->setText(s1);
-        search.index++;
-        if (search.index >= sz)
-            search.index = 0;
     }
     else
-        statustext->setText("Text not found");
+        statustext->setText(tr("Text not found"));
 }
 
 void MainWindow::tree_srch_pre()
@@ -649,7 +646,7 @@ int i, sz;
         return;
     }
     if (s != search.lastText) {
-        search.index = 0;
+        search.shown = -1;
         search.lastText = s;
     }
 
@@ -667,16 +664,16 @@ int i, sz;
 
     sz = search.results.size();
     if (sz > 0) {
-        search.index--;
-        if (search.index < 0)
-            search.index = sz - 1;
+        //step back from the currently shown occurrence (wrapping); with nothing
+        //shown yet, or on the first, Previous lands on the last occurrence
+        search.shown = (search.shown <= 0) ? sz - 1 : search.shown - 1;
         //which occurrence *within* the branch this one is (for the highlight)
         search.occRank = 0;
-        for (i = 0; i < search.index; i++)
-            if (search.results[i] == search.results[search.index])
+        for (i = 0; i < search.shown; i++)
+            if (search.results[i] == search.results[search.shown])
                 search.occRank++;
-        set_branch(search.results[search.index]);
-        s1 = QString(tr("Displaying %1 of %2 occurences")).arg(search.index+1).arg(sz);
+        set_branch(search.results[search.shown]);
+        s1 = QString(tr("Displaying %1 of %2 occurrences")).arg(search.shown+1).arg(sz);
         statustext->setText(s1);
     }
     else

@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 16, 2026
+//Last modified Oct 19, 2026
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -69,12 +69,20 @@ QString image_own_name (const QString &dataDir, const QString &filepath);
 //removes the sidecar again); store is atomic and fails without touching data
 QSet<QString> load_owned_images (const QString &ownFile);
 bool write_owned_images (const QString &ownFile, const QSet<QString> &owned);
+//true only for a plain image filename that is safe to join to the data dir:
+//non-empty, not "." or "..", and containing no path separator. Guards the
+//deletion path against a hostile/corrupt sidecar listing "../../something" or
+//an absolute path, which would otherwise delete a file outside the data dir
+bool is_safe_sidecar_name (const QString &name);
+//result of preserving the file about to be replaced as "<filepath>.bak"
+enum class BackupResult { NoOriginal, Created, Failed };
 //keep the previous version of a file before it is replaced: copy `filepath` to
 //"<filepath>.bak" (the last existing .bak is overwritten, so it always holds
-//the immediately-previous version). Returns true when a copy was actually
-//made; a missing original is a no-op (the backup is best-effort and never
-//blocks the save that follows)
-bool make_backup_copy (const QString &filepath);
+//the immediately-previous version). The copy goes to a temporary name first and
+//is only swapped in on success, so a failed copy never destroys the existing
+//backup. NoOriginal means there was nothing to back up; Failed means the copy
+//could not be made (the save that follows may still proceed)
+BackupResult make_backup_copy (const QString &filepath);
 //true when a runtime Qt message is the benign internal "QTextCursor::setPosition:
 //... out of range" warning the external spell-checker can provoke by asking for
 //a position just past the very end (typing Return after the last line); the
@@ -146,7 +154,10 @@ class MainWindow : public QMainWindow
     //string several times appears once per mention
     struct SearchState {
         QList<QTreeWidgetItem *> results;
-        int index = 0;
+        //index of the occurrence currently shown (-1 = none yet): Next/Previous
+        //step from it, so Previous right after a hit moves to the previous one
+        //instead of repeating the current hit
+        int shown = -1;
         QString lastText;
         //how many of the branch's matches come before the current one: it is
         //the one emphasised when the branch opens in the editor
@@ -179,6 +190,10 @@ class MainWindow : public QMainWindow
     //Orphan cleanup only ever touches these, so other documents' images and
     //manually placed files are never deleted
     QSet<QString> ownedImages;
+    //bare filenames inserted since the last successful save (or since the file
+    //was opened). They belong to no saved document yet, so a Discard must delete
+    //their copies instead of leaking them into the data dir
+    QSet<QString> sessionInserted;
     QtSpell::TextEditChecker checker;
 
     QShortcut *panelshortcut = nullptr;
@@ -205,21 +220,28 @@ public slots:
 
     //orphaned-image cleanup: delete the data-dir image copies owned by the current
     //document (sidecar filepath or Currentfile) that the tree no longer
-    //references, then re-persist the owned set; called after a successful save
-    //(best-effort: any file/sidecar failure is silently ignored so the save is
-    //never blocked; the in-memory owned set is still pruned correctly)
-    void gcOrphanedImages(const QString &filepath = QString());
+    //references (an image a "<file>.bak" backup still references is kept), then
+    //re-persist the owned set; called after a successful save. Best-effort: a
+    //file failure just leaves that entry for a later retry, and the save is never
+    //blocked. Returns false only when the sidecar itself could not be written
+    bool gcOrphanedImages(const QString &filepath = QString());
     //restore ownedImages for a file just opened (the open_file() load step)
     void loadOwnedImages(const QString &filepath);
     //record a data-dir image copy as belonging to the current document
     //(insertImage calls this; exposed so the cleanup is testable without dialogs)
     void recordInsertedImage(const QString &basename);
+    //delete the image copies inserted since the last save (sessionInserted) and
+    //drop them from ownedImages; called when unsaved edits are discarded so those
+    //copies do not leak. Saved inserts are cleared on save, so this is a no-op
+    //unless the user chose Discard
+    void discardUnsavedImages();
     //after a successful Save As that moved the document from a real file to a
     //different path: both files now reference the same physical image copies,
     //so neither may ever delete them - drop this document's ownership and the
     //old file's sidecar (the copies stay on disk unowned: some data-dir hygiene
-    //is lost, but the other document's links can never break)
-    void unshareImagesAfterSaveAs(const QString &prevFile, const QString &newFile);
+    //is lost, but the other document's links can never break). Returns false
+    //only when the old sidecar could not be removed (best-effort)
+    bool unshareImagesAfterSaveAs(const QString &prevFile, const QString &newFile);
 
     //persistence primitives (pure file format, testable without dialogs)
     bool write_tree(QTreeWidget *tree, QTextStream *out);
