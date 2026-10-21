@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 19, 2026
+//Last modified Oct 21, 2026
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -139,6 +139,10 @@ class MainWindow : public QMainWindow
     QAction *actionTextBold = nullptr, *actionTextColor = nullptr, *actionTextItalic = nullptr, *actionTextUnderline = nullptr;
     QAction *actionAlignLeft = nullptr, *actionAlignCenter = nullptr, *actionAlignRight = nullptr, *actionAlignJustify = nullptr;
     QAction *actionInsertImage = nullptr;
+    //the two search arrows, kept so the event filter can tell them apart from
+    //the rest of the UI: clicking them continues a running search, while any
+    //other interaction ends it
+    QAction *srchnxtaction = nullptr, *srchpreaction = nullptr;
 
     QFontComboBox *comboFont = nullptr;
     QComboBox *comboSize = nullptr;
@@ -156,7 +160,9 @@ class MainWindow : public QMainWindow
         QList<QTreeWidgetItem *> results;
         //index of the occurrence currently shown (-1 = none yet): Next/Previous
         //step from it, so Previous right after a hit moves to the previous one
-        //instead of repeating the current hit
+        //instead of repeating the current hit. -1 (a brand-new query text)
+        //instead *anchors* the search on the branch currently displayed:
+        //its first/last occurrence, or the next/previous one after/before it
         int shown = -1;
         QString lastText;
         //how many of the branch's matches come before the current one: it is
@@ -278,6 +284,10 @@ public slots:
 
     void tree_srch_nxt();
     void tree_srch_pre();
+    //stop a running search: forget the results and the query text, clear the
+    //search box and drop the match highlights; triggered by ESC, or by any
+    //user interaction outside the search controls (see eventFilter)
+    void cancel_search();
     //drop search results/state so raw pointers are never kept across structural
     //changes (delete, open, new, cut) that destroy tree items
     void clear_search_state();

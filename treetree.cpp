@@ -11,10 +11,11 @@
  *
  */
 
-//Last modified Oct 19, 2026
+//Last modified Oct 21, 2026
 
 #include "treecle.h"
 
+#include <QHash>
 #include <QTextCursor>
 #include <QTextCharFormat>
 
@@ -576,6 +577,75 @@ void MainWindow::clear_search_state()
     search.occRank = 0;
 }
 
+void MainWindow::cancel_search()
+//stop a running search midway: forget the results and the query text, clear
+//the search box and drop the match highlights in the editor. Triggered by ESC
+//from anywhere, or by any key/mouse interaction outside the search controls
+//(see eventFilter); a structural change (clear_search_state) already ends a
+//search's stepping, and this ends the query text and highlights too
+{
+    //no search is running; the early return also blocks a re-entrant call,
+    //since clear_search_state() empties lastText
+    if (search.lastText.isEmpty())
+        return;
+
+    clear_search_state();
+    srchbox->clear();
+    //an empty needle clears the leftover highlight marks (the branch stays
+    //displayed as it was, only the search marks go)
+    highlight_search(QString(), 0);
+    statustext->setText(tr("Search stopped"));
+}
+
+static void collect_items_in_order(QTreeWidgetItem *t, QList<QTreeWidgetItem *> &out)
+//t itself followed by its descendants, parents before children - the same walk
+//srch_sub() uses to fill the results, so the two orders always agree
+{
+    out.append(t);
+    int childcount = t->childCount();
+    for (int i = 0; i < childcount; i++)
+        collect_items_in_order(t->child(i), out);
+}
+
+static int search_anchor_index(QTreeWidget *tree, const QList<QTreeWidgetItem *> &results,
+                               QTreeWidgetItem *current, bool forward)
+//index of the occurrence a brand-new search should show first: the one inside
+//`current` itself, or the next (forward) / previous (!forward) one after or
+//before it in document order; -1 when there is no current item to anchor on or
+//nothing exists on that side (the caller then wraps, or falls back)
+{
+    QList<QTreeWidgetItem *> order;
+    QHash<QTreeWidgetItem *, int> rank;
+    qsizetype i, sz, cur;
+
+    if (current == nullptr)
+        return -1;
+
+    for (i = 0; i < tree->topLevelItemCount(); i++)
+        collect_items_in_order(tree->topLevelItem(i), order);
+    for (i = 0; i < order.size(); i++)
+        rank.insert(order[i], int(i));
+
+    if (rank.contains(current) == false)
+        return -1;
+    cur = rank.value(current);
+
+    sz = results.size();
+    if (forward) {
+        //first occurrence in the current branch or a later one
+        for (i = 0; i < sz; i++)
+            if (rank.value(results[i], -1) >= cur)
+                return int(i);
+    }
+    else {
+        //last occurrence in the current branch or an earlier one
+        for (i = sz - 1; i >= 0; i--)
+            if (rank.value(results[i], -1) <= cur)
+                return int(i);
+    }
+    return -1;
+}
+
 void MainWindow::tree_srch_nxt()
 {
 QTreeWidgetItem *cat;
@@ -612,8 +682,18 @@ int i, sz;
 
     sz = search.results.size();
     if (sz > 0) {
-        //step forward from the currently shown occurrence (wrapping)
-        search.shown = (search.shown + 1) % sz;
+        if (search.shown < 0) {
+            //a new search starts from the branch the user is looking at: its
+            //first occurrence, or the next one after it (wrapping back to the
+            //very first when nothing is shown after the current branch)
+            search.shown = search_anchor_index(tree, search.results, tree->currentItem(), true);
+            if (search.shown < 0)
+                search.shown = 0;
+        }
+        else {
+            //step forward from the currently shown occurrence (wrapping)
+            search.shown = (search.shown + 1) % sz;
+        }
         //which occurrence *within* the branch this one is, so it can be
         //emphasised among the other matches shown in the editor
         search.occRank = 0;
@@ -621,7 +701,7 @@ int i, sz;
             if (search.results[i] == search.results[search.shown])
                 search.occRank++;
         set_branch(search.results[search.shown]);
-        s1 = QString(tr("Displaying %1 of %2 occurrences")).arg(search.shown+1).arg(sz);
+        s1 = QString(tr("Displaying %1 of %2 occurrences. Press ESC to stop")).arg(search.shown+1).arg(sz);
         statustext->setText(s1);
     }
     else
@@ -664,16 +744,26 @@ int i, sz;
 
     sz = search.results.size();
     if (sz > 0) {
-        //step back from the currently shown occurrence (wrapping); with nothing
-        //shown yet, or on the first, Previous lands on the last occurrence
-        search.shown = (search.shown <= 0) ? sz - 1 : search.shown - 1;
+        if (search.shown < 0) {
+            //same idea backwards: begin at the last occurrence in the branch
+            //being looked at, or the one before it (wrapping to the very last
+            //when nothing is shown before the current branch)
+            search.shown = search_anchor_index(tree, search.results, tree->currentItem(), false);
+            if (search.shown < 0)
+                search.shown = sz - 1;
+        }
+        else {
+            //step back from the currently shown occurrence (wrapping); from
+            //the first one this lands on the last
+            search.shown = (search.shown <= 0) ? sz - 1 : search.shown - 1;
+        }
         //which occurrence *within* the branch this one is (for the highlight)
         search.occRank = 0;
         for (i = 0; i < search.shown; i++)
             if (search.results[i] == search.results[search.shown])
                 search.occRank++;
         set_branch(search.results[search.shown]);
-        s1 = QString(tr("Displaying %1 of %2 occurrences")).arg(search.shown+1).arg(sz);
+        s1 = QString(tr("Displaying %1 of %2 occurrences. Press ESC to stop")).arg(search.shown+1).arg(sz);
         statustext->setText(s1);
     }
     else

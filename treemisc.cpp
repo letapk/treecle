@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 19, 2026
+//Last modified Oct 21, 2026
 
 #include "treecle.h"
 
@@ -20,11 +20,16 @@
 #include <QSaveFile>
 #include <QFileInfo>
 #include <QEvent>
+#include <QKeyEvent>
 #include <QRegularExpression>
 #include <QImage>
 #include <QImageReader>
 #include <QTextBlock>
 #include <QTextFragment>
+#include <QToolButton>
+#include <QApplication>
+#include <QFile>
+#include <QMetaProperty>
 #include <utility>
 
 //Much of this is shamelessly copied and hacked from the examples within the Qt software
@@ -259,14 +264,19 @@ void MainWindow::setup_menu_and_toolbar ()
     srchbox->setMinimumWidth(200);
 
     QIcon srchnxtIcon = QIcon::fromTheme("", QIcon(":/images/go-down-search.png"));
-    QAction *srchnxt = new QAction(tr("Search &next"), this);
-    srchnxt->setIcon(srchnxtIcon);
-    connect(srchnxt, &QAction::triggered, this, &MainWindow::tree_srch_nxt);
+    //kept as members (not locals) so the event filter can exempt the arrows
+    //from ending a running search; the object name lets the tests find them
+    srchnxtaction = new QAction(tr("Search &next"), this);
+    srchnxtaction->setObjectName("srchnext");
+    srchnxtaction->setIcon(srchnxtIcon);
+    connect(srchnxtaction, &QAction::triggered, this, &MainWindow::tree_srch_nxt);
+
 
     QIcon srchpreIcon = QIcon::fromTheme("", QIcon(":/images/go-up-search.png"));
-    QAction *srchpre = new QAction(tr("Search &previous"), this);
-    srchpre->setIcon(srchpreIcon);
-    connect(srchpre, &QAction::triggered, this, &MainWindow::tree_srch_pre);
+    srchpreaction = new QAction(tr("Search &previous"), this);
+    srchpreaction->setObjectName("srchprev");
+    srchpreaction->setIcon(srchpreIcon);
+    connect(srchpreaction, &QAction::triggered, this, &MainWindow::tree_srch_pre);
 
     tb1->addAction(addbranch);
     tb1->addAction(addsubbranch);
@@ -289,8 +299,8 @@ void MainWindow::setup_menu_and_toolbar ()
     tb1->addSeparator();
 
     tb1->addWidget(srchbox);
-    tb1->addAction(srchnxt);
-    tb1->addAction(srchpre);
+    tb1->addAction(srchnxtaction);
+    tb1->addAction(srchpreaction);
 
     tb2->addAction(newfile);
     tb2->addAction(openfile);
@@ -908,8 +918,61 @@ bool MainWindow::eventFilter (QObject *obj, QEvent *ev)
         fit_editor_images (qMax(60, leafview->viewport ()->width () - 30));
         branch_display_in_progress = false;
     }
+
+    if (ev->type() == QEvent::KeyPress) {
+        const QKeyEvent *ke = static_cast<const QKeyEvent *>(ev);
+        if (ke->key() == Qt::Key_Escape)
+            cancel_search();
+    }
+
     return QMainWindow::eventFilter (obj, ev);
 }
+
+/*
+bool MainWindow::eventFilter (QObject *obj, QEvent *ev)
+{
+    if (obj == leafview && ev->type () == QEvent::Resize) {
+        branch_display_in_progress = true;
+        fit_editor_images (qMax(60, leafview->viewport ()->width () - 30));
+        branch_display_in_progress = false;
+    }
+
+    //a running search ends the moment the user works with anything but the
+    //three search controls: ESC always stops it from anywhere, and so does
+    //any other key or mouse press except one aimed at the search box or the
+    //two arrow buttons (refining the text or stepping through the hits then
+    //keeps it alive). One application-wide filter sees every event; the
+    //lastText check makes this dead weight (and harmless) whenever no search
+    //is running. Qt delivers the first hop of each input event to the
+    //top-level window (QWidgetWindow), so a real click on the box or an
+    //arrow arrives there first; resolve that hop to the widget actually
+    //under the cursor (mouse) or the focus widget (keys) before applying
+    //the whitelist, or every click would look like a click on the window
+    //itself and end the search
+    if (search.lastText.isEmpty() == false) {
+        QObject *aimed = obj;
+        if (obj != nullptr && obj->inherits("QWidgetWindow")) {
+            if (ev->type() == QEvent::KeyPress || ev->type() == QEvent::KeyRelease)
+                aimed = QApplication::focusWidget();
+            else if (ev->type() == QEvent::MouseButtonPress || ev->type() == QEvent::MouseButtonDblClick) {
+
+
+        }
+        const bool onSearchControl = on_search_control(qobject_cast<QWidget *>(aimed), srchbox, srchnxtaction, srchpreaction);
+        if (ev->type() == QEvent::KeyPress) {
+            const QKeyEvent *ke = static_cast<const QKeyEvent *>(ev);
+            if (ke->key() == Qt::Key_Escape || onSearchControl == false)
+                cancel_search();
+        }
+        else if (ev->type() == QEvent::MouseButtonPress || ev->type() == QEvent::MouseButtonDblClick) {
+            if (onSearchControl == false)
+                cancel_search();
+        }
+    }
+
+    return QMainWindow::eventFilter (obj, ev);
+}
+*/
 
 bool migrate_old_data_dir (const QString &oldDir, const QString &newDir)
 {
@@ -1177,3 +1240,4 @@ void MainWindow::updateWindowTitle()
         title.append(" *");
     setWindowTitle(title);
 }
+

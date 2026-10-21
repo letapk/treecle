@@ -380,7 +380,7 @@ Click OK to continue</source>
     <message>
         <location filename="treetree.cpp" line="435"/>
         <location filename="treetree.cpp" line="479"/>
-        <source>Displaying %1 of %2 occurrences</source>
+        <source>Displaying %1 of %2 occurences</source>
         <translation>Zeige %1 von %2 Vorkommen an</translation>
     </message>
     <message>

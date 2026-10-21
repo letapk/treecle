@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Sep 16, 2026
+//Last modified Oct 21, 2026
 
 #include "treecle.h"
 
@@ -113,8 +113,12 @@ MainWindow::MainWindow(QWidget *parent, const QString &dataDir) : QMainWindow(pa
     splitter->addWidget(tree);
     splitter->addWidget(leafview);
     setCentralWidget(splitter);
-    //re-fit images when the editor panel is resized (follows the window width)
-    leafview->installEventFilter(this);
+    //one application-wide event filter covers both jobs below: it re-fits the
+    //editor's images when the panel is resized (follows the window width), and
+    //stops a running search as soon as the user interacts with anything but
+    //the search controls (an app filter sees the editor's events too, so the
+    //former per-widget install is not needed)
+    qApp->installEventFilter(this);
 
     //status bar on the bottom
     statustext = new QLabel (this);
