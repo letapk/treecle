@@ -9,6 +9,10 @@ representing whatever structure exists in the data you want to store. This
 heirarchy can be stored, retrieved, expanded, etc., in any way within the
 limits of the program through the treelike user interface.
 
+Changes in version 1.2.5
+------------------------
+1. Bug fixes.
+
 Changes in version 1.2.4
 ------------------------
 1. The search functionality was modified to begin searching from the currently displayed branch rather than from the root of the tree.

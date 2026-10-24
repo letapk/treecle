@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 21, 2026
+//Last modified Oct 23, 2026
 
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
@@ -111,6 +111,15 @@ QString unique_data_dir_name (const QString &dataDir, const QString &fileName);
 //bare data-dir image filenames referenced by <img src> tags in any branch text
 //(external URLs and absolute paths are never cleanup candidates)
 QSet<QString> collect_image_refs (const QTreeWidget &tree);
+//true when a tree can be represented in the current .trc format: at most
+//maxCategories top-level items, maxChildren children per item, maxDepth nesting
+//levels, and no branch name/body longer than maxBranchLength UTF-16 units.
+//save_file()/save_file_as() call this before touching the target, so they never
+//write a file the reader would reject. reason receives a translated
+//explanation when false; the limits are parameters so tests can use small ones.
+bool tree_fits_format_limits (const QTreeWidget &tree, qint64 maxBranchLength,
+                              int maxCategories, int maxChildren, int maxDepth,
+                              QString *reason = nullptr);
 //maximum nesting depth of a tree, shared by the .trc parser and the editing
 //slots: files that go deeper are rejected as corrupt, and the UI refuses to
 //add or paste branches past this limit, so every recursive read/write/search/

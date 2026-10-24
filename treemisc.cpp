@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 21, 2026
+//Last modified Oct 23, 2026
 
 #include "treecle.h"
 
@@ -25,12 +25,21 @@
 #include <QImage>
 #include <QImageReader>
 #include <QTextBlock>
+#include <QTextDocumentFragment>
 #include <QTextFragment>
 #include <QToolButton>
 #include <QApplication>
 #include <QFile>
 #include <QMetaProperty>
 #include <utility>
+
+//a sidecar line is a bare image filename; anything longer is corrupt/hostile
+//and must not be allocated in full by readLine()
+static const qint64 MAX_SIDECAR_LINE = 4096;
+//scanning a huge .bak for <img> tags would allocate its whole content; above
+//this size the backup is treated as opaque and orphan cleanup keeps every
+//owned image (never delete one a restorable backup might still show)
+static const qint64 MAX_BACKUP_SCAN = 64 * 1024 * 1024;
 
 //Much of this is shamelessly copied and hacked from the examples within the Qt software
 void MainWindow::setup_menu_and_toolbar ()
@@ -445,8 +454,37 @@ QSet<QString> refs;
     while (it.hasNext()) {
         m = it.next();
         QString src = m.captured(1);
+        //the src attribute is html-escaped (e.g. "a&amp;b.png"), while the
+        //owned copy is the actual data-dir filename ("a&b.png"); compare the
+        //decoded value or a still-referenced image would look orphaned. New
+        //inserts also percent-encode the filename (a&b.png -> a%26b.png), so
+        //accept both the raw and the URL-decoded spelling.
+        src = QTextDocumentFragment::fromHtml(src).toPlainText();
+        if (src.isEmpty())
+            continue;
         if (src.indexOf('/') == -1 && src.indexOf("://") == -1)
             refs.insert(src);
+        const QString decoded = QUrl::fromPercentEncoding(src.toUtf8());
+        if (decoded != src && decoded.indexOf('/') == -1 && decoded.indexOf("://") == -1)
+            refs.insert(decoded);
+    }
+    return refs;
+}
+
+//collect refs from one branch and its descendants (iteratively, so the tree's
+//nesting cap is the only depth limit)
+static QSet<QString> collect_image_refs_from_subtree (const QTreeWidgetItem *root)
+{
+QList<const QTreeWidgetItem *> stack;
+QSet<QString> refs;
+
+    if (root != nullptr)
+        stack.append(root);
+    while (stack.isEmpty() == false) {
+        const QTreeWidgetItem *item = stack.takeLast();
+        refs.unite(collect_image_refs_from_html(item->text(1)));
+        for (int c = 0; c < item->childCount(); c++)
+            stack.append(item->child(c));
     }
     return refs;
 }
@@ -455,32 +493,36 @@ QSet<QString> refs;
 //by <img src> tags in every branch's text
 QSet<QString> collect_image_refs (const QTreeWidget &tree)
 {
-QList<QTreeWidgetItem *> stack;
 QSet<QString> refs;
 
     for (int i = 0; i < tree.topLevelItemCount(); i++)
-        stack.append(tree.topLevelItem(i));
-    while (stack.isEmpty() == false) {
-        QTreeWidgetItem *item = stack.takeLast();
-        refs.unite(collect_image_refs_from_html(item->text(1)));
-        for (int c = 0; c < item->childCount(); c++)
-            stack.append(item->child(c));
-    }
+        refs.unite(collect_image_refs_from_subtree(tree.topLevelItem(i)));
     return refs;
 }
 
-//bare image filenames referenced by a document's rolling ".bak" backup (empty
-//when there is no backup), so orphan cleanup never deletes an image the
-//restorable backup still displays
-static QSet<QString> image_refs_from_backup (const QString &filepath)
+//bare image filenames referenced by a document's rolling ".bak" backup (refs
+//is left unchanged when there is no backup), so orphan cleanup never deletes an
+//image the restorable backup still displays. Returns false when a backup exists
+//but is too large to scan safely; the caller then keeps every owned image
+//instead of risking a wrong deletion.
+static bool image_refs_from_backup (const QString &filepath, QSet<QString> &refs)
 {
 QFile bak(filepath + ".bak");
+QByteArray data;
 QString html;
 
     if (bak.open(QIODevice::ReadOnly | QIODevice::Text) == false)
-        return QSet<QString>();
-    html = QString::fromUtf8(bak.readAll());
-    return collect_image_refs_from_html(html);
+        //a missing backup references nothing; an existing but unreadable one
+        //must keep every owned image instead of being treated as empty
+        return (QFile::exists(filepath + ".bak") == false);
+    //read at most one unit past the cap, so a growing file cannot turn this
+    //into an unbounded readAll()
+    data = bak.read(MAX_BACKUP_SCAN + 1);
+    if (data.size() > MAX_BACKUP_SCAN || bak.error() != QFileDevice::NoError)
+        return false;
+    html = QString::fromUtf8(data);
+    refs.unite(collect_image_refs_from_html(html));
+    return true;
 }
 
 //only writer of ownedImages alongside the (modal) insertImage(); kept separate
@@ -494,8 +536,9 @@ void MainWindow::recordInsertedImage (const QString &basename)
         sessionInserted.insert(basename);
         //persist right away (when a real file is open), so a crash before the
         //next save cannot orphan the copy; the set is rewritten on every save
-        if (Currentfile != "Noname.trc")
-            write_owned_images(image_own_name(DataDir, Currentfile), ownedImages);
+        if (Currentfile != "Noname.trc"
+            && write_owned_images(image_own_name(DataDir, Currentfile), ownedImages) == false)
+            statustext->setText(tr("Image inserted, but image metadata could not be updated"));
     }
 }
 
@@ -527,7 +570,7 @@ bool MainWindow::gcOrphanedImages (const QString &filepath)
 {
 QSet<QString> refs, keep;
 QString path = filepath;
-bool ok = true;
+bool ok = true, backupComplete = true;
 
     if (path.isEmpty())
         path = Currentfile;
@@ -539,11 +582,21 @@ bool ok = true;
         return ok;
     }
     refs = collect_image_refs(*tree);
+    //the internal clipboard can still hold a cut/copied branch whose images are
+    //not in the tree; keep them so a later paste cannot reference a file this
+    //save deleted (the clipboard is dropped when switching documents)
+    if (copy_branch != nullptr)
+        refs.unite(collect_image_refs_from_subtree(copy_branch));
     //an image still referenced by the rolling "<path>.bak" backup is kept too:
     //the backup must stay a restorable document, so its images survive until a
     //later save rolls the backup away
     if (path != "Noname.trc")
-        refs.unite(image_refs_from_backup(path));
+        backupComplete = image_refs_from_backup(path, refs);
+    if (backupComplete == false) {
+        //the backup is too large to inspect safely: an owned image might still
+        //be referenced there, so keep the ownership set untouched
+        return true;
+    }
     for (const QString &name : ownedImages) {
         //a name that is not a plain filename (a hostile/corrupt sidecar) is never
         //joined to the data dir or deleted
@@ -599,6 +652,13 @@ QMessageBox msgBox;
 
     editor = leafview;
 
+    //an image needs a branch to live in; refusing before the dialog also
+    //avoids copying and recording an image that could never be referenced
+    if (tree->topLevelItemCount() == 0) {
+        statustext->setText(tr("The tree is empty"));
+        return;
+    }
+
     filters += tr("Common Graphics (*.png *.jpg *.jpeg *.gif);;");
     filters += tr("Portable Network Graphics (PNG) (*.png);;");
     filters += tr("JPEG (*.jpg *.jpeg);;");
@@ -634,10 +694,12 @@ QMessageBox msgBox;
     msgBox.setText(s);
     msgBox.exec();
 
-    if (tree->topLevelItemCount() == 0)
-        return;
-    //store only the file name; the data dir path is prepended when displayed
-    editor->insertHtml(QString("<img src=\"%1\">").arg(QFileInfo(fname).fileName().toHtmlEscaped()));
+    //store only the file name; the data dir path is prepended when displayed.
+    //Percent-encode URL metacharacters (#, ?, %, spaces, ...), then html-escape
+    //the attribute value, so the image still resolves when displayed/saved.
+    const QString imgName = QFileInfo(fname).fileName();
+    const QString imgSrc = QString::fromLatin1(QUrl::toPercentEncoding(imgName));
+    editor->insertHtml(QString("<img src=\"%1\">").arg(imgSrc.toHtmlEscaped()));
     //immediately fit the new image to the panel width (aspect ratio kept)
     fit_editor_images(qMax(60, leafview->viewport()->width() - 30));
 }
@@ -800,7 +862,14 @@ int pos = 0, w = 0, h = 0;
         //shrink only bare filenames that are expected in the data dir
         if (path.isEmpty() == false && path.contains('/') == false &&
             path.contains("://") == false) {
-            reader.setFileName(dataDir + "/" + QFileInfo(src).fileName());
+            //src may be percent-encoded; the reader needs the real filename
+            QString file = QFileInfo(path).fileName();
+            if (QFile::exists(dataDir + "/" + file) == false) {
+                const QString rawFile = QFileInfo(src).fileName();
+                if (rawFile != file)
+                    file = rawFile;
+            }
+            reader.setFileName(dataDir + "/" + file);
             orig = reader.size();
             if (orig.isValid() && orig.width() > maxWidth) {
                 w = maxWidth;
@@ -871,10 +940,17 @@ QList<ImgScale> work;
             if (name.isEmpty ())
                 continue;
             //only bare data-dir filenames follow the panel width; external
-            //links and absolute paths are left exactly as authored
-            if (name.indexOf('/') != -1)
+            //links and absolute paths are left exactly as authored. The name
+            //may be percent-encoded, so prefer the decoded spelling when that
+            //file actually exists (raw names containing '%' still work).
+            QString file = name;
+            const QString decoded = QUrl::fromPercentEncoding(name.toUtf8());
+            if (decoded != name && decoded.indexOf('/') == -1
+                && QFile::exists(DataDir + "/" + decoded))
+                file = decoded;
+            if (file.indexOf('/') != -1)
                 continue;
-            reader.setFileName (DataDir + "/" + name);
+            reader.setFileName (DataDir + "/" + file);
             orig = reader.size ();
             if (orig.isValid () == false)
                 continue;
@@ -1000,13 +1076,14 @@ bool did_migrate = false;
         if (si.isDir()) {
             if (QDir(dst).exists() == false) {
                 QDir tmp;
-                tmp.rename(src, dst);
+                if (tmp.rename(src, dst) == false)
+                    continue;//leave the old directory in place for a retry
                 did_migrate = true;
             }
         }
         else if (QFile::exists(dst) == false) {
             if (QFile::copy(src, dst) == false)
-                return false;
+                continue;//other entries can still be migrated
             did_migrate = true;
         }
     }
@@ -1053,23 +1130,39 @@ QString image_own_name (const QString &dataDir, const QString &filepath)
 bool is_safe_sidecar_name (const QString &name)
 {
     //a sidecar entry is a bare image filename: reject anything that could escape
-    //the data dir when joined to it (deletion of arbitrary files otherwise)
-    return name.isEmpty() == false
-        && name != "." && name != ".."
-        && name.contains('/') == false
-        && name.contains('\\') == false;
+    //the data dir when joined to it (deletion of arbitrary files otherwise), and
+    //anything that could break the one-name-per-line format. Leading/trailing
+    //spaces are valid filename characters and must survive a round-trip.
+    if (name.isEmpty() || name == "." || name == ".."
+        || name.contains('/') || name.contains('\\'))
+        return false;
+    for (const QChar &c : name) {
+        if (c.category() == QChar::Other_Control
+            || c.category() == QChar::Separator_Line
+            || c.category() == QChar::Separator_Paragraph)
+            return false;
+    }
+    return true;
 }
 
 QSet<QString> load_owned_images (const QString &ownFile)
 {
 QSet<QString> owned;
-QFile in(ownFile);
+QFile file(ownFile);
 QString line;
 
-    if (in.open(QIODevice::ReadOnly | QIODevice::Text) == false)
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text) == false)
         return owned;//missing or unreadable sidecar: nothing is owned
+    QTextStream in(&file);
+    in.setEncoding(QStringConverter::Utf8);
     while (in.atEnd() == false) {
-        line = in.readLine().trimmed();
+        line = in.readLine(MAX_SIDECAR_LINE + 1);
+        if (line.length() > MAX_SIDECAR_LINE) {
+            //a corrupt/hostile sidecar must not drive a partial ownership set
+            //(later entries could then look orphaned): own nothing at all
+            return QSet<QString>();
+        }
+        //do not trim: a leading/trailing space is part of a legal filename
         //a corrupt/hostile entry is dropped at the door, so it can never reach
         //the deletion path
         if (is_safe_sidecar_name(line))
@@ -1100,21 +1193,41 @@ bool write_owned_images (const QString &ownFile, const QSet<QString> &owned)
 BackupResult make_backup_copy (const QString &filepath)
 {
 QFileInfo fi(filepath);
-QString tmp = filepath + ".bak.tmp";
+QFileInfo bakInfo(filepath + ".bak");
+QFile in(filepath);
+QSaveFile out(filepath + ".bak");
+char buf[64 * 1024];
+qint64 n;
 
     //nothing to back up when the file has never been saved to this path
     if (fi.exists() == false || fi.isFile() == false)
         return BackupResult::NoOriginal;
-    //copy to a temporary name first, then swap it in: a failed copy leaves the
-    //existing .bak (the last good version) untouched
-    QFile::remove(tmp);
-    if (QFile::copy(filepath, tmp) == false)
+    //never follow a symlink planted at the predictable backup name: replacing
+    //it could otherwise be used to redirect the write outside the document dir
+    if (bakInfo.isSymLink())
         return BackupResult::Failed;
-    QFile::remove(filepath + ".bak");
-    if (QFile::rename(tmp, filepath + ".bak") == false) {
-        QFile::remove(tmp);
+    if (in.open(QIODevice::ReadOnly) == false)
         return BackupResult::Failed;
+    //QSaveFile writes to a unique temporary file in the same directory and
+    //commits it with an atomic rename, so a crash or failed copy can never
+    //destroy the existing .bak (the last good version)
+    if (out.open(QIODevice::WriteOnly) == false)
+        return BackupResult::Failed;
+    while (in.atEnd() == false) {
+        n = in.read(buf, sizeof(buf));
+        if (n < 0 || (n == 0 && (in.error() != QFileDevice::NoError || in.atEnd() == false))) {
+            out.cancelWriting();
+            return BackupResult::Failed;
+        }
+        if (n == 0)
+            break;
+        if (out.write(buf, n) != n) {
+            out.cancelWriting();
+            return BackupResult::Failed;
+        }
     }
+    if (out.commit() == false)
+        return BackupResult::Failed;
     return BackupResult::Created;
 }
 

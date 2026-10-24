@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 21, 2026
+//Last modified Oct 23, 2026
 
 #include "treecle.h"
 
@@ -149,6 +149,10 @@ QTreeWidgetItem *b, *deleted;
     }
 
     if (catflag == 0){//subbranch
+        //defensive: the invariant is catflag == 0 => cur_leaf != nullptr, but
+        //never dereference a stale/null selection if it is ever violated
+        if (cur_leaf == nullptr)
+            return;
         b = cur_leaf->parent();
         if (b == nullptr)
             return;
@@ -214,7 +218,8 @@ void MainWindow::tree_cutbranch()
 void MainWindow::tree_delbranch_after_copy()
 {
 int i;
-QTreeWidgetItem *deleted;
+bool blocked;
+QTreeWidgetItem *deleted, *parent, *next;
 
     if (tree->topLevelItemCount() == 0) {
         statustext->setText(tr("The tree is empty"));
@@ -222,47 +227,57 @@ QTreeWidgetItem *deleted;
     }
 
     if (catflag == 0){//subbranch
-        cur_branch = cur_leaf->parent();
-        if (cur_branch == nullptr)
+        //capture the parent before removing: removing the selected item emits
+        //itemSelectionChanged, and get_highlighted_branch() would otherwise
+        //rewrite cur_branch/cur_leaf while this function is still using them
+        parent = (cur_leaf == nullptr) ? nullptr : cur_leaf->parent();
+        if (parent == nullptr)
             return;
         deleted = cur_leaf;
-        cur_branch->removeChild(deleted);
+        blocked = tree->blockSignals(true);
+        parent->removeChild(deleted);
         delete deleted;
+        tree->setCurrentItem(parent);
+        tree->blockSignals(blocked);
         clear_search_state();
+        set_branch(parent);//catflag follows the actual parent, not always 1
+        set_document_modified();
         statustext->setText(tr("Deleted sub-branch. File modified"));
+        return;
     }
-    else {//category
-        i = tree->indexOfTopLevelItem(cur_branch);
-        if (i < 0)
-            return;
-        deleted = cur_branch;
-        if (i > 0) {
-            cur_branch = tree->topLevelItem(i-1);
-        }
-        else if (tree->topLevelItemCount() > 1) {
-            cur_branch = tree->topLevelItem(1);
-        }
-        else {
-            cur_branch = nullptr;
-        }
 
-        tree->takeTopLevelItem(i);
-        delete deleted;
-        clear_search_state();
+    //category: pick the neighbour that becomes current *before* removing, so
+    //the selection change cannot rewrite it midway through the operation
+    i = tree->indexOfTopLevelItem(cur_branch);
+    if (i < 0)
+        return;
+    deleted = cur_branch;
+    if (i > 0)
+        next = tree->topLevelItem(i-1);
+    else if (tree->topLevelItemCount() > 1)
+        next = tree->topLevelItem(1);
+    else
+        next = nullptr;
+
+    blocked = tree->blockSignals(true);
+    tree->takeTopLevelItem(i);
+    delete deleted;
+    if (next != nullptr)
+        tree->setCurrentItem(next);
+    tree->blockSignals(blocked);
+    clear_search_state();
+    if (next != nullptr) {
+        set_branch(next);
         statustext->setText(tr("Deleted category. File modified"));
-    }
-    if (tree->topLevelItemCount() > 0) {
-        cur_leaf = cur_branch;
-        set_branch(cur_branch);
     }
     else {
         cur_branch = nullptr;
         cur_leaf = nullptr;
+        catflag = 1;
         statustext->setText(tr("The tree is empty"));
         leafdoc->setHtml("<p></p>");
     }
     set_document_modified();
-    catflag = 1;
 }
 
 void MainWindow::tree_copybranch()
@@ -288,13 +303,28 @@ void MainWindow::tree_copybranch()
 
 void MainWindow::tree_pastebranch()
 {
-    if (tree->topLevelItemCount() == 0) {
-        statustext->setText(tr("The tree is empty"));
+    if (copy_branch == nullptr) {
+        if (tree->topLevelItemCount() == 0)
+            statustext->setText(tr("The tree is empty"));
+        else
+            statustext->setText(tr("Nothing to paste. Copy or cut a branch first."));
         return;
     }
 
-    if (copy_branch == nullptr) {
-        statustext->setText(tr("Nothing to paste. Copy or cut a branch first."));
+    //cutting the last branch leaves its clone in the clipboard even though the
+    //tree is empty: it can come back as a new top-level category
+    if (tree->topLevelItemCount() == 0) {
+        QTreeWidgetItem *pasted;
+        if (subtree_height(copy_branch) > MAX_TREE_DEPTH) {
+            statustext->setText(tr("Pasting would exceed the maximum nesting depth. Nothing was pasted."));
+            return;
+        }
+        pasted = copy_branch;
+        copy_branch = nullptr;
+        tree->addTopLevelItem(pasted);
+        set_branch(pasted);
+        set_document_modified();
+        statustext->setText(tr("Copied branch. File modified"));
         return;
     }
 
@@ -744,6 +774,10 @@ int i, sz;
 
     sz = search.results.size();
     if (sz > 0) {
+        //editing a branch can shrink the result set while the old index is
+        //still stored; clamp it before stepping back or indexing the list
+        if (search.shown >= sz)
+            search.shown = sz - 1;
         if (search.shown < 0) {
             //same idea backwards: begin at the last occurrence in the branch
             //being looked at, or the one before it (wrapping to the very last

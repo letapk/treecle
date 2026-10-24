@@ -11,7 +11,7 @@
  *
  */
 
-//Last modified Oct 21, 2026
+//Last modified Oct 23, 2026
 
 #include "treecle.h"
 
@@ -52,7 +52,7 @@ QString dataDir;
     oldpath.append("/.treecle");
     if (migrate_old_data_dir(oldpath, dataDir)) {
         QMessageBox::information (nullptr, "Treecle",
-            "Your data files were moved from\n" + oldpath + "\n\nto\n" + dataDir +
+            "Your data files were migrated from\n" + oldpath + "\n\nto\n" + dataDir +
             "\nto comply with the standard data directory layout.");
     }
 
@@ -174,6 +174,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &dataDir) : QMainWindow(pa
 
 MainWindow::~MainWindow()
 {
+    //the internal clipboard owns an unattached clone; free it explicitly
+    delete copy_branch;
+    copy_branch = nullptr;
     //release the per-file lock, if any (kept for a restored MainWindow stack
     //unwind; the QLockFile member is cleaned up here rather than left dangling)
     release_file_lock();

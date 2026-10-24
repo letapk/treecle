@@ -11,22 +11,78 @@
  *
  */
 
-//Last modified Oct 19, 2026
+//Last modified Oct 23, 2026
 
 #include "treecle.h"
 
 #include <QRegularExpression>
 #include <QSaveFile>
 #include <QFileInfo>
+#include <QCoreApplication>
 #include <QUrl>
 #include <functional>
 
 //sanity limits for .trc parsing (survive corrupt or hostile files)
 static const qint64 MAX_BRANCH_LENGTH = 50 * 1024 * 1024;
+//header/version/length lines are tiny in a valid file; cap them so a hostile
+//file cannot make readLine() allocate an arbitrarily large string before the
+//numeric checks below run
+static const qint64 MAX_METADATA_LINE = 1024;
 static const int MAX_CATEGORIES = 100000;
 static const int MAX_CHILDREN = 100000;
 static const int MAX_FORMAT_VERSION = 1;//highest version this build can read
 static const char *const TRC_MAGIC = "Treecle .trc file";
+
+bool tree_fits_format_limits (const QTreeWidget &tree, qint64 maxBranchLength,
+                              int maxCategories, int maxChildren, int maxDepth,
+                              QString *reason)
+{
+struct Frame {
+    const QTreeWidgetItem *item;
+    int depth;
+};
+QList<Frame> stack;
+
+    if (tree.topLevelItemCount() > maxCategories) {
+        if (reason != nullptr)
+            *reason = QCoreApplication::translate("MainWindow",
+                "Cannot save: the tree has more than %1 categories.").arg(maxCategories);
+        return false;
+    }
+    for (int i = 0; i < tree.topLevelItemCount(); i++)
+        stack.append({tree.topLevelItem(i), 1});
+    while (stack.isEmpty() == false) {
+        Frame f = stack.takeLast();
+        if (f.depth > maxDepth) {
+            if (reason != nullptr)
+                *reason = QCoreApplication::translate("MainWindow",
+                    "Cannot save: the tree is nested deeper than %1 levels.").arg(maxDepth);
+            return false;
+        }
+        if (f.item->childCount() > maxChildren) {
+            if (reason != nullptr)
+                *reason = QCoreApplication::translate("MainWindow",
+                    "Cannot save: a branch has more than %1 child branches.").arg(maxChildren);
+            return false;
+        }
+        if (f.item->text(0).length() > maxBranchLength
+            || f.item->text(1).length() > maxBranchLength) {
+            if (reason != nullptr)
+                *reason = QCoreApplication::translate("MainWindow",
+                    "Cannot save: a branch name or body is larger than the file format allows.");
+            return false;
+        }
+        for (int c = 0; c < f.item->childCount(); c++)
+            stack.append({f.item->child(c), f.depth + 1});
+    }
+    return true;
+}
+
+static bool tree_fits_current_format (const QTreeWidget &tree, QString *reason)
+{
+    return tree_fits_format_limits(tree, MAX_BRANCH_LENGTH, MAX_CATEGORIES,
+                                   MAX_CHILDREN, MAX_TREE_DEPTH, reason);
+}
 
 void MainWindow::new_file()
 {
@@ -84,7 +140,7 @@ void MainWindow::open_file()
 QTreeWidgetItem *cat;
 QList<QTreeWidgetItem *> tops;
 QString fn, s, legacyDir;
-bool ok;
+bool ok, lockSwitched = false;
 
     //1. choose the file first: cancelling here leaves the current tree untouched
     fn = QFileDialog::getOpenFileName(this, tr("Open File..."), QString(Openpath), tr("Treecle files (*.trc);;All files (*)"));
@@ -108,11 +164,36 @@ bool ok;
         //Discard: drop the current tree only after the new file has loaded
     }
 
-    //3. load the whole file into unattached items first (all-or-nothing)
+    //3. take the per-file lock *before* reading: another instance must not be
+    //able to save between our parse and the lock, or we would display stale
+    //content and could later clobber the newer file. If no lock is held yet
+    //(the unsaved placeholder never had one) or the file differs from the one
+    //currently open, release the old lock first so the acquired lock always
+    //matches Currentfile. A failed read below restores the old lock.
+    if (filelock == nullptr || trc_paths_differ(fn, Currentfile)) {
+        release_file_lock();
+        if (acquire_file_lock(fn) == false) {
+            statustext->setText(tr("The file is already open in another instance"));
+            if (Currentfile != "Noname.trc")//re-lock the file still in use
+                acquire_file_lock(Currentfile);
+            return;//the current tree is left untouched
+        }
+        lockSwitched = true;
+    }
+    auto restoreLockAfterFailedRead = [&]() {
+        if (lockSwitched) {
+            release_file_lock();
+            if (Currentfile != "Noname.trc")
+                acquire_file_lock(Currentfile);
+        }
+    };
+
+    //4. load the whole file into unattached items first (all-or-nothing)
     QFile file (fn);
     ok = file.open(QFile::ReadOnly);
     if (ok == false) {
         statustext->setText(tr("Could not open the file for reading: ") + fn);
+        restoreLockAfterFailedRead();
         return;
     }
     QTextStream in(&file);
@@ -125,6 +206,7 @@ bool ok;
     if (hs != TrcHeaderStatus::Ok) {
         file.close();
         file_read_in_progress = false;
+        restoreLockAfterFailedRead();
         if (hs == TrcHeaderStatus::NewerVersion)
             statustext->setText(tr("This file was written by a newer version of Treecle"));
         else
@@ -136,6 +218,7 @@ bool ok;
         qDeleteAll(tops);//discard everything loaded so far
         file.close();
         file_read_in_progress = false;
+        restoreLockAfterFailedRead();
         statustext->setText(tr("The file is corrupt - the tree was not loaded"));
         return;
     }
@@ -153,24 +236,6 @@ bool ok;
     };
     for (QTreeWidgetItem *t : tops)
         fixImgs(t);
-
-    //4. take the per-file lock: refuse to open the same file in two live
-    //instances (Cancel-only; stale locks are removed automatically). If no
-    //lock is held yet (the unsaved placeholder never had one) or the file
-    //differs from the one currently open, release the old lock first so the
-    //acquired lock always matches Currentfile
-    if (filelock == nullptr || trc_paths_differ(fn, Currentfile)) {
-        release_file_lock();
-        if (acquire_file_lock(fn) == false) {
-            file_read_in_progress = false;
-            qDeleteAll(tops);//the parsed tree is never attached - free it
-            tops.clear();
-            statustext->setText(tr("The file is already open in another instance"));
-            if (Currentfile != "Noname.trc")//re-lock the file still in use
-                acquire_file_lock(Currentfile);
-            return;//the current tree is left untouched
-        }
-    }
 
     //5. the file loaded completely: only now replace the current tree
     delete_tree();
@@ -195,6 +260,15 @@ bool ok;
         statustext->setText(s);
     }
     tree->setFocus();
+}
+
+//bounded readLine(): a line longer than maxUnits is rejected instead of being
+//allocated in full. Qt may return the first maxUnits+1 units of a longer line;
+//that is enough to reject it, and the caller aborts the parse anyway.
+static bool read_bounded_line (QTextStream *in, qint64 maxUnits, QString *out)
+{
+    *out = in->readLine(maxUnits + 1);
+    return in->status() == QTextStream::Ok && out->length() <= maxUnits;
 }
 
 //read exactly `units` UTF-16 code units into *out. QTextStream::read() counts
@@ -234,7 +308,8 @@ int j = 0, childnum = 0;
     if (in->status() != QTextStream::Ok || j < 0 || j > MAX_BRANCH_LENGTH)
         return false;
     //go to next line (otherwise the CR becomes part of the string s below)
-    s = in->readLine();
+    if (read_bounded_line(in, MAX_METADATA_LINE, &s) == false)
+        return false;
     i = (qint64)j;
 
     //read the name of this branch
@@ -247,7 +322,8 @@ int j = 0, childnum = 0;
     if (in->status() != QTextStream::Ok || j < 0 || j > MAX_BRANCH_LENGTH)
         return false;
     //go to next line (otherwise the CR becomes part of the string s below)
-    s = in->readLine();
+    if (read_bounded_line(in, MAX_METADATA_LINE, &s) == false)
+        return false;
     i = (qint64)j;
 
     //read the data in this branch
@@ -301,9 +377,11 @@ int v;
 
     //parse the optional magic line + format version; legacy .trc files start
     //directly with the category count and remain readable
-    line1 = in->readLine();
+    if (read_bounded_line(in, MAX_METADATA_LINE, &line1) == false)
+        return TrcHeaderStatus::Corrupt;
     if (line1 == QLatin1String(TRC_MAGIC)) {
-        vline = in->readLine();
+        if (read_bounded_line(in, MAX_METADATA_LINE, &vline) == false)
+            return TrcHeaderStatus::Corrupt;
         v = vline.trimmed().toInt(&vok);
         if (in->status() != QTextStream::Ok || vok == false || v < 1 || v > MAX_FORMAT_VERSION) {
             if (vok && v > MAX_FORMAT_VERSION)
@@ -358,6 +436,14 @@ bool ok;
         return save_file_as();
     }
 
+    //never write a document the reader would reject: validate the whole tree
+    //before the backup, lock switch or QSaveFile touch the target
+    QString limitReason;
+    if (tree_fits_current_format(*tree, &limitReason) == false) {
+        statustext->setText(limitReason);
+        return false;
+    }
+
     //preserve the version about to be replaced: the .bak always holds the
     //immediately-previous save, so a later bad save is never fatal
     BackupResult backup = make_backup_copy(Currentfile);
@@ -404,6 +490,13 @@ bool MainWindow::save_file_as()
 QString s;
 QString prevFile;
 bool ok;
+QString limitReason;
+
+    //the tree must fit the format before asking for a path or switching locks
+    if (tree_fits_current_format(*tree, &limitReason) == false) {
+        statustext->setText(limitReason);
+        return false;
+    }
 
     //remember the file the ownership sidecar currently belongs to, so a Save
     //As to a different path can drop the now-stale sidecar (its key changes)
@@ -585,6 +678,10 @@ void MainWindow::delete_tree ()
     //current document and must never be deleted by a later save (the sidecar
     //the document itself got is restored by loadOwnedImages() after any switch)
     ownedImages.clear();
+    //the internal clipboard belongs to the document that created it: its image
+    //references cannot be transferred safely, so drop it when switching away
+    delete copy_branch;
+    copy_branch = nullptr;
     //status text here
     statustext->setText(tr("File modified"));
 }
